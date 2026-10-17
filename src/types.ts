@@ -123,6 +123,8 @@ export const AppConfigSchema = z.object({
   fitMode: z.enum(["stretch", "ratio_min", "ratio_max"]),
   iconListMode: z.enum(["user", "pack", "both"]),
   packetIntervalMs: z.number().gte(0).optional(),
+  bleTimingLogs: z.boolean().optional(),
+  debugLogs: z.boolean().optional(),
   gridEnabled: z.boolean().optional(),
 });
 

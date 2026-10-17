@@ -1,5 +1,6 @@
 import {
   NiimbotBluetoothClient,
+  NIIMBOT_CLIENT_DEFAULTS,
   NiimbotPacket,
   ConnectEvent,
   ConnectResult,
@@ -13,9 +14,10 @@ import {
   type NiimbotBluetoothClientConnectOptions,
   type PacketReceivedEvent,
 } from "@mmote/niimbluelib";
+import { startTimingLog } from "./timing_log.ts";
 
 const PRINTER_CHARACTERISTIC = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
-const IOS_MIN_WRITE_INTERVAL_MS = 100;
+export const IOS_DEFAULT_WRITE_INTERVAL_MS = 20;
 const IOS_RATE_LIMIT_RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 interface IOSConnection {
@@ -32,6 +34,33 @@ interface IOSConnection {
 /** Workarounds for niimbluelib 0.47.1 and iOS Web Bluetooth bridges. */
 export class BluetoothClient extends NiimbotBluetoothClient {
   private iosConnection?: IOSConnection;
+  private timingLogsEnabled = false;
+  private nextWriteId = 0;
+  private packetIntervalOverride?: number;
+
+  setTimingLogsEnabled(enabled: boolean) {
+    this.timingLogsEnabled = enabled;
+  }
+
+  override setPacketInterval(milliseconds: number) {
+    if (!Number.isFinite(milliseconds) || milliseconds < 0) throw new Error("Invalid packet interval");
+    super.setPacketInterval(milliseconds);
+    if (this.packetIntervalOverride === milliseconds) return;
+    this.packetIntervalOverride = milliseconds;
+    if (this.iosConnection) this.iosConnection.writeIntervalMs = milliseconds;
+  }
+
+  resetPacketInterval() {
+    if (this.packetIntervalOverride === undefined) return;
+    this.packetIntervalOverride = undefined;
+    super.setPacketInterval(NIIMBOT_CLIENT_DEFAULTS.packetIntervalMs);
+    if (this.iosConnection) this.iosConnection.writeIntervalMs = IOS_DEFAULT_WRITE_INTERVAL_MS;
+  }
+
+  getRecommendedStatusPollInterval() {
+    // Keep polling unchanged when testing 20ms/0ms write intervals.
+    return Math.max(this.iosConnection ? 1000 : 100, this.getPacketInterval() * 10);
+  }
 
   override async connect(options?: NiimbotBluetoothClientConnectOptions) {
     const isIOS =
@@ -53,7 +82,7 @@ export class BluetoothClient extends NiimbotBluetoothClient {
     const session: IOSConnection = {
       device,
       server: device.gatt,
-      writeIntervalMs: IOS_MIN_WRITE_INTERVAL_MS,
+      writeIntervalMs: this.packetIntervalOverride ?? IOS_DEFAULT_WRITE_INTERVAL_MS,
       writeQueue: Promise.resolve(),
       onDisconnect: () => {
         if (this.iosConnection !== session) return;
@@ -155,16 +184,31 @@ export class BluetoothClient extends NiimbotBluetoothClient {
   override async sendRaw(data: Uint8Array, force?: boolean) {
     const session = this.iosConnection;
     if (!session) return super.sendRaw(data, force);
+    const requestId = ++this.nextWriteId;
+    const queuedAt = performance.now();
     const send = async () => {
       // A separate queue also serializes forced writes, which bypass the
       // protocol mutex while a command is waiting for its response.
       const writing = session.writeQueue.then(async () => {
         let retryDelayMs = 0;
         for (let attempt = 0; ; attempt++) {
-          await Utils.sleep(Math.max(this.packetIntervalMs, session.writeIntervalMs, retryDelayMs));
+          const intervalMs = Math.max(this.packetIntervalMs, session.writeIntervalMs, retryDelayMs);
+          const waitingAt = performance.now();
+          if (intervalMs > 0) await Utils.sleep(intervalMs);
           this.assertIOSConnection(session);
           if (!session.channel || !session.writeMethod) throw new Error("Channel is closed");
           const method = `${session.writeMethod} ${session.channel.uuid}`;
+          const timing = startTimingLog(this.timingLogsEnabled, "write", {
+            requestId,
+            attempt: attempt + 1,
+            method: session.writeMethod,
+            characteristic: session.channel.uuid,
+            bytes: data.byteLength,
+            intervalMs,
+            configuredIntervalMs: this.packetIntervalOverride ?? IOS_DEFAULT_WRITE_INTERVAL_MS,
+            waitMs: Math.round((performance.now() - waitingAt) * 100) / 100,
+            sinceQueuedMs: Math.round((performance.now() - queuedAt) * 100) / 100,
+          });
           try {
             // Preserve the view's byte offset and length when passing a buffer.
             await session.channel[session.writeMethod](new Uint8Array(data).buffer);
@@ -172,6 +216,11 @@ export class BluetoothClient extends NiimbotBluetoothClient {
             // Only replay requests explicitly rejected by the bridge's rate
             // limiter. Other failures may have already delivered printer data.
             const message = error instanceof Error ? error.message : String(error);
+            timing("end", {
+              status: "error",
+              errorName: error instanceof Error ? error.name : undefined,
+              error: message,
+            });
             if (
               !/rate limit exceeded[\s\S]*too many BLE requests/i.test(message) ||
               attempt >= IOS_RATE_LIMIT_RETRY_DELAYS_MS.length
@@ -180,9 +229,11 @@ export class BluetoothClient extends NiimbotBluetoothClient {
             }
             retryDelayMs = IOS_RATE_LIMIT_RETRY_DELAYS_MS[attempt];
             // Retain the slower pace for subsequent packets in this connection.
-            session.writeIntervalMs = Math.min(session.writeIntervalMs * 2, 1000);
+            session.writeIntervalMs = Math.min(Math.max(session.writeIntervalMs, 10) * 2, 1000);
+            timing("retry", { retryAfterMs: retryDelayMs, nextIntervalMs: session.writeIntervalMs });
             continue;
           }
+          timing("end", { status: "ok" });
           this.emit("rawpacketsent", new RawPacketSentEvent(data));
           return;
         }
@@ -202,6 +253,11 @@ export class BluetoothClient extends NiimbotBluetoothClient {
         return new NiimbotPacket(ResponseCommandId.In_Invalid, []);
       }
 
+      const timing = startTimingLog(this.timingLogsEnabled && this.iosConnection !== undefined, "command", {
+        command: Utils.bufToHex([packet.command]),
+        expectedResponseIds: Utils.bufToHex(packet.validResponseIds, ", "),
+        timeoutMs,
+      });
       let timer: ReturnType<typeof setTimeout> | undefined;
       let listener: (event: PacketReceivedEvent) => void;
       let onTimeout: () => void;
@@ -213,6 +269,7 @@ export class BluetoothClient extends NiimbotBluetoothClient {
           if (packet.validResponseIds.length && !packet.validResponseIds.some((id) => id === command) && !isError)
             return;
           received = true;
+          timing("response", { responseCommand: Utils.bufToHex([command]), bytes: incoming.data.length });
           clearTimeout(timer);
           this.off("packetreceived", listener);
           try {
@@ -242,7 +299,11 @@ export class BluetoothClient extends NiimbotBluetoothClient {
           if (!received) timer = setTimeout(onTimeout, timeoutMs);
         });
         const [, incoming] = await Promise.all([sent, response]);
+        timing("end", { status: "ok" });
         return incoming;
+      } catch (error) {
+        timing("end", { status: "error", error: String(error) });
+        throw error;
       } finally {
         clearTimeout(timer);
         this.off("packetreceived", listener!);

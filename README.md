@@ -67,9 +67,30 @@ Setup details available [here](https://beacio.com/setup).
 
 On iOS, the app prefers writes with response when the printer characteristic supports them;
 this avoids repeat-write failures observed with BeaCIO and B1. Printers exposing only writes without response still use that method.
-Writes are serialized with a minimum 100ms interval on iOS. Explicit BLE rate-limit rejections are retried
+Writes are serialized with a default 20ms interval on iOS. In the printer's gear menu, adjust **Send interval**
+or use the 100ms, 20ms and 0ms presets. Changes apply immediately and persist across reloads; Reset restores
+the default. 0ms removes the added delay while still waiting for each write to finish before the next starts.
+Change intervals between print jobs so each timing capture uses consistent settings. Explicit BLE rate-limit rejections are retried
 after 1, 2 and 4 seconds, with a slower write pace retained for the connection. Other write errors are not retried.
-Print status polling also slows down to leave room for these paced writes.
+Print status polling stays at least one second on iOS, including at 20ms and 0ms.
+Rate-limit recovery can raise the effective interval above the chosen value; reconnecting or choosing a different
+interval resets the learned pace. Reapplying the same setting does not clear it.
+
+For timing diagnostics, connect the printer, open its gear menu and enable **BLE timing logs (iOS writes)**.
+The same switch is available in the footer's bug-icon dialog, including on mobile screens.
+The switch applies immediately and is saved for the next connection. In Safari Web Inspector's console,
+filter for `[BLE timing]`. Each JSON line includes a UTC `time`, monotonic `atMs`, trace `id`, and `elapsedMs`.
+The independent **Debug logs (packets and print details)** switch controls packet dumps, page variables and
+print task messages. It defaults to off, applies immediately and is saved; errors and warnings remain visible.
+Timing events use the same console Log level as packet dumps. When enabled, packet dumps include a UTC
+timestamp; their `>>` timestamp marks successful send completion, not write start.
+`write.start` / `write.end` measure one bridge write attempt; `waitMs` measures pacing separately,
+and `sinceQueuedMs` includes queueing and previous retry attempts. `write.retry` reports the cooldown
+and next interval. `command.response` timestamps the matching printer reply (which can precede `write.end`),
+and `print.start` / `print.end` measure the whole job including rendering and completion checks.
+An `end` event reports `status` as well as any error; write completion alone does not mean the label has printed.
+Disable timing logs after testing to reduce console overhead. `configuredIntervalMs` records the chosen write
+interval, while `intervalMs` includes any adaptive pacing or retry cooldown applied to that attempt.
 
 ## Images
 

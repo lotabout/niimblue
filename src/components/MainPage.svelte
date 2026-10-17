@@ -215,9 +215,15 @@
       font-size: 15px;
     }
     .local-note,
-    .source-link,
-    .debug-button {
+    .source-link {
       display: none;
+    }
+    .debug-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      min-height: 28px;
     }
     .device-status {
       font-size: 9px;

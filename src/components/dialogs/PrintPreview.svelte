@@ -2,7 +2,7 @@
   import { fontLibrary } from "$/stores/fonts";
   import { onMount } from "svelte";
   import { derived } from "svelte/store";
-  import { connectedPrinterName, connectionState, printerClient, printerMeta } from "$/stores/app";
+  import { appConfig, connectedPrinterName, connectionState, printerClient, printerMeta } from "$/stores/app";
   import * as effects from "$/utils/post_process";
   import {
     type EncodedImage,
@@ -29,6 +29,8 @@
   import { FileUtils } from "$/utils/file_utils";
   import AppModal from "$/components/basic/AppModal.svelte";
   import { calculatePrintProgress, printPages } from "$/utils/print_job";
+  import { startTimingLog } from "$/utils/timing_log";
+  import { BluetoothClient } from "$/utils/bluetooth_client";
 
   interface Props {
     labelProps: LabelProps;
@@ -108,6 +110,13 @@
     const singlePageSessions = printSessionMode === "per_page" || (printSessionMode === "auto" && taskName === "B1");
     let completedPages = 0;
     let sessionPages = totalPages;
+    const timing = startTimingLog($appConfig.bleTimingLogs ?? false, "print", {
+      transport: client.getType(),
+      taskName,
+      pageCount,
+      copies,
+      packetIntervalMs: client.getPacketInterval(),
+    });
 
     client.stopHeartbeat();
 
@@ -115,9 +124,10 @@
       density,
       speed,
       labelType,
-      // Leave room for paced BLE writes instead of queuing status requests
-      // faster than the bridge can send them (at least 1s on iOS).
-      statusPollIntervalMs: Math.max(100, client.getPacketInterval() * 10),
+      statusPollIntervalMs:
+        client instanceof BluetoothClient
+          ? client.getRecommendedStatusPollInterval()
+          : Math.max(100, client.getPacketInterval() * 10),
       statusTimeoutMs: 8_000,
       pageColor: PageColorType.SingleColor,
     };
@@ -147,7 +157,7 @@
         createTask: (totalPages) => client.protocol.newPrintTask(taskName, { ...opts, totalPages }),
         renderPage: async (pageIdx): Promise<EncodedImage> => {
           currentPage = pageIdx;
-          console.log("Printing page", currentPage);
+          if ($appConfig.debugLogs) console.log("Printing page", currentPage);
           await generatePreviewData(currentPage);
           return ImageEncoder.encodeCanvas(previewCanvas, opts.pageColor!, labelProps.printDirection);
         },
@@ -162,6 +172,10 @@
         console.error(e);
       }
     } finally {
+      timing("end", {
+        status: controller.signal.aborted ? "cancelled" : error ? "error" : "ok",
+        error: error || undefined,
+      });
       client.off("printprogress", printListener);
       client.off("printpacketprogress", sendListener);
       client.protocol.setDefaultPacketTimeout();
@@ -328,7 +342,7 @@
       }
     }
 
-    console.log("Page variables:", variables);
+    if ($appConfig.debugLogs) console.log("Page variables:", variables);
 
     canvasPreprocess(fabricTempCanvas, variables);
 
@@ -391,7 +405,7 @@
     }
 
     if (detectedPrintTaskName !== undefined) {
-      console.log(`Detected print task version: ${detectedPrintTaskName}`);
+      if ($appConfig.debugLogs) console.log(`Detected print task version: ${detectedPrintTaskName}`);
       printTaskName = detectedPrintTaskName;
     }
 

@@ -27,6 +27,7 @@
   import type { MaterialIcon } from "material-icons";
   import FirmwareUpdater from "$/components/basic/FirmwareUpdater.svelte";
   import PrinterVerboseInfo from "$/components/dialogs/PrinterVerboseInfo.svelte";
+  import BleTimingLogs from "$/components/basic/BleTimingLogs.svelte";
 
   let connectionType = $state<ConnectionType>("bluetooth");
   let featureSupport = $state<AvailableTransports>({ webBluetooth: false, webSerial: false, capacitorBle: false });
@@ -113,6 +114,9 @@
     </button>
 
     <div class="dropdown-menu p-3">
+      <div class="mb-3">
+        <BleTimingLogs />
+      </div>
       {#if $printerInfo}
         <div class="text-secondary">{$tr("connector.device_version")}</div>
 

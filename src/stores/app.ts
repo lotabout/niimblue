@@ -65,17 +65,27 @@ export const initClient = (connectionType: ConnectionType) => {
       newClient = connectionType === "bluetooth" ? new BluetoothClient() : instantiateClient(connectionType);
 
       const conf = get(appConfig);
+      newClient.setDebug(conf.debugLogs ?? false);
 
+      if (newClient instanceof BluetoothClient) {
+        newClient.setTimingLogsEnabled(conf.bleTimingLogs ?? false);
+      }
       if (conf.packetIntervalMs !== undefined) {
         newClient.setPacketInterval(conf.packetIntervalMs);
       }
 
       newClient.on("packetsent", (e) => {
-        console.log(`>> ${Utils.bufToHex(e.packet.toBytes())} (${RequestCommandId[e.packet.command]})`);
+        if (!get(appConfig).debugLogs) return;
+        console.log(
+          `[${new Date().toISOString()}] >> ${Utils.bufToHex(e.packet.toBytes())} (${RequestCommandId[e.packet.command]})`,
+        );
       });
 
       newClient.on("packetreceived", (e) => {
-        console.log(`<< ${Utils.bufToHex(e.packet.toBytes())} (${ResponseCommandId[e.packet.command]})`);
+        if (!get(appConfig).debugLogs) return;
+        console.log(
+          `[${new Date().toISOString()}] << ${Utils.bufToHex(e.packet.toBytes())} (${ResponseCommandId[e.packet.command]})`,
+        );
       });
 
       newClient.on("connect", (e) => {

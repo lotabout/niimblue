@@ -1,26 +1,11 @@
 <script lang="ts">
   import AppModal from "$/components/basic/AppModal.svelte";
-  import { appConfig } from "$/stores/app";
   import { tr } from "$/utils/i18n";
-  import { NIIMBOT_CLIENT_DEFAULTS } from "@mmote/niimbluelib";
+  import BleTimingLogs from "$/components/basic/BleTimingLogs.svelte";
 
   let { show = $bindable() } = $props();
 </script>
 
 <AppModal title={$tr("debug.title")} bind:show>
-  <div class="mb-1">
-    {$tr("debug.packet_interval.help")}
-  </div>
-
-  <div class="input-group flex-nowrap input-group-sm mb-3">
-    <input
-      class="form-control"
-      type="number"
-      min="1"
-      placeholder={`${NIIMBOT_CLIENT_DEFAULTS.packetIntervalMs}`}
-      bind:value={$appConfig.packetIntervalMs} />
-    <span class="input-group-text">ms</span>
-    <button class="btn btn-outline-secondary" onclick={() => ($appConfig.packetIntervalMs = undefined)}
-      >{$tr("debug.reset")}</button>
-  </div>
+  <BleTimingLogs />
 </AppModal>

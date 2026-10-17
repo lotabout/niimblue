@@ -1,5 +1,11 @@
 # 2026.10.0
 
+* Default iOS writes to 20ms and make packet dumps and print debug messages opt-in, separate from BLE timing logs.
+
+* Make the iOS send interval adjustable without reconnecting, including 20ms and 0ms presets, while preserving rate-limit retries and timing diagnostics.
+
+* Add optional BLE timing logs for iOS write attempts, replies, rate-limit retries and complete print jobs.
+
 * Synchronize per-user custom fonts through remote storage, with binary font files outside SQLite, automatic loading across devices and authenticated downloads.
 
 * Pace and serialize iOS BLE writes, back off and retry explicit bridge rate-limit rejections, and reduce print status polling traffic.
