@@ -155,7 +155,7 @@ Here are some options. HTTPS is required for non-localhost deployments.
 
 #### All-in-one LAN deployment (Docker Compose)
 
-The root Compose stack runs the web app, Caddy HTTPS and the Python/SQLite storage server together. It uses a local CA, proxies `/api/*` on the same HTTPS origin and persists labels and certificates in Docker volumes. Copy `.env.deploy.example` to `.env.deploy`, set the LAN address and a generated storage token, then run:
+The root Compose stack runs the web app, Caddy HTTPS and the Python/SQLite storage server together. It uses a local CA, proxies `/api/*` on the same HTTPS origin and persists labels and certificates in Docker volumes. Only one port is published: HTTP requests on that port redirect to HTTPS on the same port. Copy `.env.deploy.example` to `.env.deploy`, set the LAN address and a generated storage token, then run:
 
 ```sh
 docker compose --env-file .env.deploy up -d --build

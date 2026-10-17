@@ -1,5 +1,7 @@
 # 2026.10.0
 
+* Use one published port for LAN HTTPS and same-port HTTP-to-HTTPS redirects, while keeping the container-local health check on HTTP.
+
 * Add an optional bind-mount Compose configuration to keep SQLite and Caddy state under the deployment directory, including offline bundles and migration instructions.
 
 * Remove the storage Compose dependency on the host's docker-init binary for compatibility with minimal Docker installations.

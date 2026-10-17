@@ -4,11 +4,14 @@
 	default_sni {$NIIMBLUE_HOST}
 	# Trust the exported CA on clients, rather than inside this container.
 	skip_install_trust
-}
-
-# Explicit redirect also supports host port mappings such as 8080 -> 80 / 8443 -> 443.
-http://{$NIIMBLUE_HOST} {
-	redir https://{$NIIMBLUE_HOST}:{$NIIMBLUE_HTTPS_PORT:443}{uri} permanent
+	# Accept plaintext HTTP on the TLS port and redirect to HTTPS on that same port.
+	# Scope this to TLS so the loopback HTTP healthcheck stays HTTP.
+	servers :443 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
 }
 
 https://{$NIIMBLUE_HOST} {

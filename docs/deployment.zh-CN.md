@@ -22,8 +22,7 @@ openssl rand -hex 32
 | --- | --- |
 | `NIIMBLUE_BIND_IP` | Docker 主机的实际内网 IPv4，例如 `192.168.1.100`；必须是主机已有的地址 |
 | `NIIMBLUE_HOST` | 设备访问的 IP 或内网 DNS 名称，不带协议、端口或路径；使用域名时自行配置局域网 DNS |
-| `NIIMBLUE_HTTP_PORT` | 默认 `80`，访问后跳转到 HTTPS |
-| `NIIMBLUE_HTTPS_PORT` | 默认 `443`；例如改为 `8443` 后访问 `https://192.168.1.100:8443` |
+| `NIIMBLUE_HTTPS_PORT` | 唯一对外 TCP 端口，默认 `443`；例如改为 `8443` 后，`http://192.168.1.100:8443` 会跳转到 `https://192.168.1.100:8443` |
 | `NIIMBLUE_PLATFORM` | Intel/AMD 机器用 `linux/amd64`，ARM64 机器用 `linux/arm64` |
 | `NIIMBLUE_STORAGE_TOKEN` | 粘贴刚生成的 token，用于默认用户；至少 24 位非空白 ASCII 字符 |
 | `NIIMBLUE_STORAGE_USERS` | 可选 JSON 用户配置，见下面的多用户说明；至少设置默认 token 或一个用户 |
@@ -38,7 +37,11 @@ docker compose --env-file .env.deploy ps
 
 源码目录的 `compose.override.yaml` 会被 Compose 自动加载，用来构建镜像；`compose.yaml` 本身只描述运行服务。`storage` 健康检查通过后才启动 `web`。`config --quiet` 检查 Compose 格式，token 的有效性由 server 启动时检查。
 
-允许局域网设备访问配置的 HTTP/HTTPS TCP 端口。不需要公网域名、公网端口或 Let's Encrypt；Caddy 使用本地 CA 签发和续期证书。首次启动后按第三节安装 CA。
+允许局域网设备访问 `NIIMBLUE_HTTPS_PORT` 指定的一个 TCP 端口即可。不需要公网域名、公网端口或 Let's Encrypt；Caddy 使用本地 CA 签发和续期证书。首次启动后按第三节安装 CA。
+
+Caddy 的 `http_redirect` 会在同一端口识别明文 HTTP 并返回 308，保留原端口、路径和查询参数，最终通过 HTTPS 提供网页和 API。例如端口为 `8443` 时，`http://192.168.1.100:8443/?a=1` 会跳转到 `https://192.168.1.100:8443/?a=1`。不再单独发布 80 端口：`http://192.168.1.100` 默认访问 80，不会进入这个服务；请直接使用 HTTPS 地址，或在 HTTP 地址中显式带上配置的端口。[Caddy 官方说明](https://caddyserver.com/docs/caddyfile/options#http_redirect)
+
+旧版配置的 `NIIMBLUE_HTTP_PORT` 不再使用，可以从 `.env.deploy` 删除；单端口由原有的 `NIIMBLUE_HTTPS_PORT` 控制。升级需要重建 `web` 镜像，或加载新版离线包的镜像后重新启动，因为 Caddyfile 打包在镜像中；仅修改 `.env.deploy` 不会更新旧镜像的行为。
 
 ## 二、打成大包，搬到另一台机器 / 离线内网
 
@@ -248,7 +251,8 @@ docker compose --env-file .env.deploy up -d --pull never
 | --- | --- |
 | `exec: "docker-init": executable file not found` | 旧配置的 `storage` 含 `init: true`，依赖主机提供 Docker init。更新 `compose.yaml` 或删除该行，再运行 `docker compose --env-file .env.deploy up -d --force-recreate --no-build --pull never`；无需重新构建镜像，数据卷保留 |
 | `storage` 不健康、`web` 没启动 | 查看 `docker compose --env-file .env.deploy logs storage`，确认至少配置一个有效 token，JSON 格式和用户 token 没有重复 |
-| 无法绑定端口 / IP | `NIIMBLUE_BIND_IP` 必须属于主机；检查 80/443 是否被占用，必要时更换发布端口 |
+| 无法绑定端口 / IP | `NIIMBLUE_BIND_IP` 必须属于主机；检查 `NIIMBLUE_HTTPS_PORT` 指定的端口是否被占用，必要时更换发布端口 |
+| HTTP 没有跳转到 HTTPS | HTTP 地址必须带配置的同一个端口，例如 `http://192.168.1.100:8443`；确认已重建或加载新版 `web` 镜像 |
 | 仍有证书警告 | 安装根证书并启用完全信任；确认访问地址与 `NIIMBLUE_HOST` 一致，系统时间正确 |
 | iOS 没有蓝牙入口 | 检查 BeaCIO 扩展、站点访问和蓝牙权限，以及 HTTPS 信任状态 |
 | API 返回 401 | 直接在地址栏打开 API 没有 token 是正常的；通过网页「测试连接」验证 |

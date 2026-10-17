@@ -16,7 +16,7 @@ FROM caddy:2-alpine AS https-server
 COPY --from=builder /app/dist/ /srv/
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 
-EXPOSE 80 443
+EXPOSE 443
 
 # Keep the existing HTTP-only image as the default target.
 FROM nginx:1.27-alpine AS server
