@@ -1,0 +1,47 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.stitch",
+  "version": "1.0.0",
+  "legacyPreset": "stitch",
+  "name": {
+    "en": "Needle & stitch",
+    "zh_cn": "针线缝边"
+  },
+  "referenceDesign": 21,
+  "features": {
+    "decoration": true,
+    "repeat": true
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "bottom-right",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "stitch",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {
+    "needle": {
+      "type": "paths",
+      "width": 62,
+      "height": 62,
+      "paths": [
+        {
+          "d": "M10 55 L46 7 Q54 -1 57 5 Q61 11 51 19 Z M47 8 Q56 2 53 10 L46 18 Q41 22 47 8 M48 17 C53 45 65 50 54 58 C42 66 30 56 35 47 C39 39 48 43 43 50 M36 57 C19 51 21 38 12 38 Q2 38 4 48"
+        }
+      ]
+    }
+  }
+}

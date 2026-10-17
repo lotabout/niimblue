@@ -1,0 +1,36 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.ink",
+  "version": "1.0.0",
+  "legacyPreset": "ink",
+  "name": {
+    "en": "Ink outline",
+    "zh_cn": "手绘墨线"
+  },
+  "referenceDesign": 16,
+  "features": {
+    "decoration": false,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "ink",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {}
+}

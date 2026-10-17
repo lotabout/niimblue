@@ -339,5 +339,22 @@
     "storage.error.auth": "Access denied. Check the access token and the service’s allowed origins.",
     "storage.error.conflict": "Another device changed this label. Your edits are kept. Use Save as to preserve your version, or reopen the label to load the latest version.",
     "storage.error.missing": "This label no longer exists. Use Save as to keep your edits as a new label.",
-    "storage.error.invalid": "Invalid storage settings or incompatible service. Enter a NiimBlue storage service URL and access token. Use HTTPS, or HTTP for localhost/private IPv4 addresses."
+    "storage.error.invalid": "Invalid storage settings or incompatible service. Enter a NiimBlue storage service URL and access token. Use HTTPS, or HTTP for localhost/private IPv4 addresses.",
+    "params.border.preset.atelier": "Atelier lines",
+    "params.border.preset.stardust": "Starry capsule",
+    "params.border.preset.postage": "Postage stamp",
+    "params.border.preset.olive": "Olive sprigs",
+    "params.border.preset.daisy": "Daisy corner",
+    "params.border.preset.ginkgo": "Ginkgo leaves",
+    "params.border.preset.berries": "Berry sprig",
+    "params.border.preset.cat": "Sleeping cat",
+    "params.border.preset.bunny": "Peeking rabbit",
+    "params.border.preset.birds": "Little birds",
+    "params.border.preset.whale": "Whale & waves",
+    "params.border.preset.ink": "Ink outline",
+    "params.border.preset.nouveau": "Nouveau lily",
+    "params.border.preset.ribbon": "Ribbon bow",
+    "params.border.preset.cloud": "Little cloud",
+    "params.border.preset.stitch": "Needle & stitch",
+    "params.border.preset.meadow": "Meadow waves"
 }

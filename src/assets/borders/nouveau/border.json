@@ -1,0 +1,63 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.nouveau",
+  "version": "1.0.0",
+  "legacyPreset": "nouveau",
+  "name": {
+    "en": "Nouveau lily",
+    "zh_cn": "艺术百合"
+  },
+  "referenceDesign": 18,
+  "features": {
+    "decoration": false,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "nouveau",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {
+    "lily": {
+      "file": "assets/lily.png",
+      "naturalWidth": 1983,
+      "naturalHeight": 793,
+      "crop": [405, 23, 1172, 748],
+      "width": 110,
+      "height": 70.204778,
+      "type": "png"
+    }
+  },
+  "provenance": {
+    "tool": "Built-in image_gen",
+    "reference": "Original 5x5 border concept sheet generated in this chat",
+    "method": "Each motif was extracted individually with transparent_background=true. Selected outputs were corrected to remove white interior fills or clipped edges. Original generated PNG files are copied unchanged; alpha-bound cropping and tinting happen in the renderer.",
+    "assets": {
+      "lily": {
+        "file": "lily.png",
+        "referenceDesign": 18,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. design 18, fourth row third column: extract ONLY the central lily flower at the top of its Art Nouveau frame. Preserve its original long petals and small attached curving leaves. Remove the long frame lines and all corner embellishments. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "af763980aaaeaea5cca15f859053dc28272e1fe5e2ce337ea4cfc91d5dadd44b"
+      }
+    },
+    "cleanupPrompts": [
+      "Correct this existing PNG. Make ALL WHITE FILL inside the illustration completely transparent, preserving exact black drawing lines. Only black ink on true alpha. Remove white/gray fill/shading/glow. No redesign.",
+      "Preserve this black ink bow illustration exactly, but expand the transparent canvas and complete any clipped loop or ribbon tip. The whole bow must fit INSIDE the canvas with clear transparent margin on all four sides. Keep black line drawing with transparent interiors. No frame, no text, no white fills."
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.bunny",
+  "version": "1.0.0",
+  "legacyPreset": "bunny",
+  "name": {
+    "en": "Peeking rabbit",
+    "zh_cn": "探头小兔"
+  },
+  "referenceDesign": 12,
+  "features": {
+    "decoration": true,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "bottom-right",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "bunny",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {
+    "bunny": {
+      "file": "assets/bunny.png",
+      "naturalWidth": 1536,
+      "naturalHeight": 1024,
+      "crop": [229, 109, 1121, 851],
+      "width": 90,
+      "height": 68.322926,
+      "type": "png"
+    },
+    "sparkle": {
+      "type": "paths",
+      "width": 24,
+      "height": 24,
+      "paths": [
+        {
+          "d": "M12 1 Q12 12 23 12 Q12 12 12 23 Q12 12 1 12 Q12 12 12 1 Z"
+        }
+      ]
+    }
+  },
+  "provenance": {
+    "tool": "Built-in image_gen",
+    "reference": "Original 5x5 border concept sheet generated in this chat",
+    "method": "Each motif was extracted individually with transparent_background=true. Selected outputs were corrected to remove white interior fills or clipped edges. Original generated PNG files are copied unchanged; alpha-bound cropping and tinting happen in the renderer.",
+    "assets": {
+      "bunny": {
+        "file": "bunny.png",
+        "referenceDesign": 12,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. design 12, third row second column: extract ONLY the peeking rabbit at bottom-right, including its two long ears, round face, tiny eyes, little paws, and small leafy tufts on both sides. Exclude the distant sparkle decorations and any baseline. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "66a14b93cc74700f5c79a187f9d8575f91bd1c9506a301effc6a8d32f4bb50f4"
+      }
+    },
+    "cleanupPrompts": [
+      "Correct this existing PNG. Make ALL WHITE FILL inside the illustration completely transparent, preserving exact black drawing lines. Only black ink on true alpha. Remove white/gray fill/shading/glow. No redesign.",
+      "Preserve this black ink bow illustration exactly, but expand the transparent canvas and complete any clipped loop or ribbon tip. The whole bow must fit INSIDE the canvas with clear transparent margin on all four sides. Keep black line drawing with transparent interiors. No frame, no text, no white fills."
+    ]
+  }
+}

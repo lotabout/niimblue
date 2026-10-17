@@ -1,0 +1,63 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.olive",
+  "version": "1.0.0",
+  "legacyPreset": "olive",
+  "name": {
+    "en": "Olive sprigs",
+    "zh_cn": "橄榄枝"
+  },
+  "referenceDesign": 6,
+  "features": {
+    "decoration": false,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "olive",
+    "artworkScale": 1.25,
+    "sizing": "frame-height",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {
+    "olive": {
+      "file": "assets/olive.png",
+      "naturalWidth": 1024,
+      "naturalHeight": 1536,
+      "crop": [230, 115, 645, 1364],
+      "width": 44,
+      "height": 93.048062,
+      "type": "png"
+    }
+  },
+  "provenance": {
+    "tool": "Built-in image_gen",
+    "reference": "Original 5x5 border concept sheet generated in this chat",
+    "method": "Each motif was extracted individually with transparent_background=true. Selected outputs were corrected to remove white interior fills or clipped edges. Original generated PNG files are copied unchanged; alpha-bound cropping and tinting happen in the renderer.",
+    "assets": {
+      "olive": {
+        "file": "olive.png",
+        "referenceDesign": 6,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. design 06, second row first column: extract ONLY its LEFT tall olive sprig, including its slender curved stem, pointed leaves and tiny berries. Do not include the matching right sprig; we will mirror this asset in code. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "4dbdfcad221a41fed2f2954223c4d9f6adbc814c24a9784a472eab0604fcbcf8"
+      }
+    },
+    "cleanupPrompts": [
+      "Correct this existing PNG. Make ALL WHITE FILL inside the illustration completely transparent, preserving exact black drawing lines. Only black ink on true alpha. Remove white/gray fill/shading/glow. No redesign.",
+      "Preserve this black ink bow illustration exactly, but expand the transparent canvas and complete any clipped loop or ribbon tip. The whole bow must fit INSIDE the canvas with clear transparent margin on all four sides. Keep black line drawing with transparent interiors. No frame, no text, no white fills."
+    ]
+  }
+}

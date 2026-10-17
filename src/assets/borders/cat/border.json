@@ -1,0 +1,63 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.cat",
+  "version": "1.0.0",
+  "legacyPreset": "cat",
+  "name": {
+    "en": "Sleeping cat",
+    "zh_cn": "酣睡小猫"
+  },
+  "referenceDesign": 11,
+  "features": {
+    "decoration": true,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top-left",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "cat",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 7.75,
+      "height": 4
+    }
+  },
+  "assets": {
+    "cat": {
+      "file": "assets/cat.png",
+      "naturalWidth": 2172,
+      "naturalHeight": 724,
+      "crop": [110, 130, 1953, 481],
+      "width": 132,
+      "height": 32.509985,
+      "type": "png"
+    }
+  },
+  "provenance": {
+    "tool": "Built-in image_gen",
+    "reference": "Original 5x5 border concept sheet generated in this chat",
+    "method": "Each motif was extracted individually with transparent_background=true. Selected outputs were corrected to remove white interior fills or clipped edges. Original generated PNG files are copied unchanged; alpha-bound cropping and tinting happen in the renderer.",
+    "assets": {
+      "cat": {
+        "file": "cat.png",
+        "referenceDesign": 11,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. Extract ONLY the sleeping cat illustration from design 11. Remove the label frame and keep its sleeping face, curled body and tail. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "da256010509af08dd3eaa4c17617f4983b9b747a264690b13235dc92d6862740"
+      }
+    },
+    "cleanupPrompts": [
+      "Correct this existing PNG. Make ALL WHITE FILL inside the illustration completely transparent, preserving exact black drawing lines. Only black ink on true alpha. Remove white/gray fill/shading/glow. No redesign.",
+      "Preserve this black ink bow illustration exactly, but expand the transparent canvas and complete any clipped loop or ribbon tip. The whole bow must fit INSIDE the canvas with clear transparent margin on all four sides. Keep black line drawing with transparent interiors. No frame, no text, no white fills."
+    ]
+  }
+}

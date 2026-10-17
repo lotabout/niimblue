@@ -1,0 +1,78 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.ginkgo",
+  "version": "1.0.0",
+  "legacyPreset": "ginkgo",
+  "name": {
+    "en": "Ginkgo leaves",
+    "zh_cn": "银杏叶"
+  },
+  "referenceDesign": 9,
+  "features": {
+    "decoration": false,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "ginkgo",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 5.4,
+      "height": 4.8
+    }
+  },
+  "assets": {
+    "ginkgo": {
+      "file": "assets/ginkgo.png",
+      "naturalWidth": 1315,
+      "naturalHeight": 1197,
+      "crop": [41, 31, 1246, 1125],
+      "width": 100,
+      "height": 90.288925,
+      "type": "png"
+    },
+    "ginkgoLeaf": {
+      "file": "assets/ginkgo-leaf.png",
+      "naturalWidth": 1428,
+      "naturalHeight": 1102,
+      "crop": [386, 234, 964, 528],
+      "width": 24,
+      "height": 13.145228,
+      "type": "png"
+    }
+  },
+  "provenance": {
+    "tool": "Built-in image_gen",
+    "reference": "Original 5x5 border concept sheet generated in this chat",
+    "method": "Each motif was extracted individually with transparent_background=true. Selected outputs were corrected to remove white interior fills or clipped edges. Original generated PNG files are copied unchanged; alpha-bound cropping and tinting happen in the renderer.",
+    "assets": {
+      "ginkgo": {
+        "file": "ginkgo.png",
+        "referenceDesign": 9,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. design 09, second row fourth column: extract ONLY the LARGE upper-left ginkgo fan leaf with its curved short stem. Preserve the delicate radiating veins. Exclude other leaves. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "ca2e777714ac2a2d21c5a3c034e7c9732900b37ca7c09dd0c63d76c84517d063"
+      },
+      "ginkgoLeaf": {
+        "file": "ginkgo-leaf.png",
+        "referenceDesign": 9,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. design 09, second row fourth column: extract ONE small falling ginkgo leaf from between its two large corner leaves. Keep it simple and faithful to the original small fan shape. Exclude every other leaf. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "03bbc2898658a0bdc48d3187fd6f4b7cf94af53314b932dc2516f8295b4f3884"
+      }
+    },
+    "cleanupPrompts": [
+      "Correct this existing PNG. Make ALL WHITE FILL inside the illustration completely transparent, preserving exact black drawing lines. Only black ink on true alpha. Remove white/gray fill/shading/glow. No redesign.",
+      "Preserve this black ink bow illustration exactly, but expand the transparent canvas and complete any clipped loop or ribbon tip. The whole bow must fit INSIDE the canvas with clear transparent margin on all four sides. Keep black line drawing with transparent interiors. No frame, no text, no white fills."
+    ]
+  }
+}

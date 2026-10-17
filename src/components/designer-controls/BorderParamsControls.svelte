@@ -1,15 +1,19 @@
 <script lang="ts">
   import { Point } from "fabric";
+  import { onMount } from "svelte";
+  import { borderImageHref, prepareBorderImages } from "$/utils/border_images";
+  import { Toasts } from "$/utils/toasts";
   import { LabelBorder } from "$/fabric-object/border";
   import {
     BORDER_ANCHORS,
     BORDER_PRESETS,
+    borderPresetFeatures,
     borderPreviewSvg,
     type BorderPreset,
     type BorderAnchor,
-    type BorderRecipe,
   } from "$/utils/border_layout";
-  import { tr } from "$/utils/i18n";
+  import { tr, locale } from "$/utils/i18n";
+  import { borderPresetName } from "$/utils/border_catalog";
 
   interface Props {
     selectedBorder: LabelBorder;
@@ -18,9 +22,26 @@
   }
   let { selectedBorder, editRevision, valueUpdated }: Props = $props();
   const presets = Object.keys(BORDER_PRESETS) as BorderPreset[];
-  const previews = Object.fromEntries(
-    presets.map((preset) => [preset, `data:image/svg+xml,${encodeURIComponent(borderPreviewSvg(preset))}`]),
-  );
+  let previews = $state<Record<string, string>>({});
+  onMount(() => {
+    let active = true;
+    void prepareBorderImages()
+      .then(() => {
+        if (active)
+          previews = Object.fromEntries(
+            presets.map((preset) => [
+              preset,
+              `data:image/svg+xml,${encodeURIComponent(borderPreviewSvg(preset, borderImageHref))}`,
+            ]),
+          );
+      })
+      .catch((error) => {
+        if (active) Toasts.error(error);
+      });
+    return () => {
+      active = false;
+    };
+  });
   const values = $derived.by(() => {
     void editRevision;
     return {
@@ -33,12 +54,14 @@
       patternSpacing: selectedBorder.patternSpacing,
       inset: selectedBorder.inset,
       borderColor: selectedBorder.borderColor,
+      minimumWidth: selectedBorder.minimumDimensions.width,
+      minimumHeight: selectedBorder.minimumDimensions.height,
       canFit:
-        selectedBorder.minimumSize <=
-        Math.min(selectedBorder.canvas?.width ?? 0, selectedBorder.canvas?.height ?? 0) - 8,
+        selectedBorder.minimumDimensions.width <= (selectedBorder.canvas?.width ?? 0) - 8 &&
+        selectedBorder.minimumDimensions.height <= (selectedBorder.canvas?.height ?? 0) - 8,
     };
   });
-  const recipe: BorderRecipe = $derived(BORDER_PRESETS[values.preset]);
+  const recipe = $derived(borderPresetFeatures(values.preset));
 
   const change = (key: string, value: string | number) => {
     if (typeof value === "number" && !Number.isFinite(value)) return;
@@ -67,8 +90,9 @@
         class:chosen={values.preset === preset}
         aria-pressed={values.preset === preset}
         onclick={() => change("preset", preset)}>
-        <img src={previews[preset]} alt="" />
-        <span>{$tr(`params.border.preset.${preset}`)}</span>
+        {#if previews[preset]}<img src={previews[preset]} alt="" />{:else}<div class="border-preview-placeholder">
+          </div>{/if}
+        <span>{borderPresetName(preset, $locale)}</span>
       </button>
     {/each}
   </div>
@@ -78,14 +102,14 @@
       >{$tr("params.border.width")}<input
         class="form-control form-control-sm"
         type="number"
-        min={selectedBorder.minimumSize}
+        min={values.minimumWidth}
         value={values.width}
         onchange={(e) => resize("width", e.currentTarget.valueAsNumber)} /></label>
     <label
       >{$tr("params.border.height")}<input
         class="form-control form-control-sm"
         type="number"
-        min={selectedBorder.minimumSize}
+        min={values.minimumHeight}
         value={values.height}
         onchange={(e) => resize("height", e.currentTarget.valueAsNumber)} /></label>
     <label
@@ -159,6 +183,10 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
+    max-height: 290px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
   }
   .border-preset {
     border: 1px solid #454f61;
@@ -167,6 +195,7 @@
     color: inherit;
     padding: 6px;
     font-size: 11px;
+    min-width: 0;
   }
   .border-preset.chosen {
     border-color: #6597f4;
@@ -178,6 +207,10 @@
     height: 46px;
     background: white;
     border-radius: 3px;
+    margin-bottom: 5px;
+  }
+  .border-preview-placeholder {
+    height: 46px;
     margin-bottom: 5px;
   }
   .border-hint {

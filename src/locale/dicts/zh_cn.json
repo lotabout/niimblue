@@ -298,5 +298,22 @@
     "storage.error.auth": "访问被拒绝，请检查访问令牌及服务允许的网页来源。",
     "storage.error.conflict": "其他设备已修改此标签，当前编辑内容仍保留。请使用“另存为”保留当前版本，或重新打开标签加载最新版本。",
     "storage.error.missing": "此标签已被删除，请使用“另存为”将当前内容保存为新标签。",
-    "storage.error.invalid": "存储配置无效或服务不兼容，请填写 NiimBlue 存储服务地址和访问令牌。支持 HTTPS，localhost 或内网 IPv4 地址也可使用 HTTP。"
+    "storage.error.invalid": "存储配置无效或服务不兼容，请填写 NiimBlue 存储服务地址和访问令牌。支持 HTTPS，localhost 或内网 IPv4 地址也可使用 HTTP。",
+    "params.border.preset.atelier": "精致双线",
+    "params.border.preset.stardust": "星点胶囊",
+    "params.border.preset.postage": "邮票齿孔",
+    "params.border.preset.olive": "橄榄枝",
+    "params.border.preset.daisy": "雏菊角花",
+    "params.border.preset.ginkgo": "银杏叶",
+    "params.border.preset.berries": "浆果枝",
+    "params.border.preset.cat": "酣睡小猫",
+    "params.border.preset.bunny": "探头小兔",
+    "params.border.preset.birds": "枝头小鸟",
+    "params.border.preset.whale": "鲸鱼与海浪",
+    "params.border.preset.ink": "手绘墨线",
+    "params.border.preset.nouveau": "艺术百合",
+    "params.border.preset.ribbon": "蝴蝶结丝带",
+    "params.border.preset.cloud": "轻柔云朵",
+    "params.border.preset.stitch": "针线缝边",
+    "params.border.preset.meadow": "花草波浪"
 }

@@ -1,0 +1,63 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.berries",
+  "version": "1.0.0",
+  "legacyPreset": "berries",
+  "name": {
+    "en": "Berry sprig",
+    "zh_cn": "浆果枝"
+  },
+  "referenceDesign": 10,
+  "features": {
+    "decoration": true,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "bottom-right",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "berries",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {
+    "berry": {
+      "file": "assets/berry.png",
+      "naturalWidth": 1536,
+      "naturalHeight": 1024,
+      "crop": [344, 79, 1062, 862],
+      "width": 110,
+      "height": 89.284369,
+      "type": "png"
+    }
+  },
+  "provenance": {
+    "tool": "Built-in image_gen",
+    "reference": "Original 5x5 border concept sheet generated in this chat",
+    "method": "Each motif was extracted individually with transparent_background=true. Selected outputs were corrected to remove white interior fills or clipped edges. Original generated PNG files are copied unchanged; alpha-bound cropping and tinting happen in the renderer.",
+    "assets": {
+      "berry": {
+        "file": "berry.png",
+        "referenceDesign": 10,
+        "prompt": "Use case: background-extraction. Edit target: the attached original 5x5 numbered label-border design sheet. design 10, second row fifth column: extract ONLY the berry-and-leaf twig at the bottom-right corner, preserving its upward-right diagonal orientation, thin branching stems, pointed leaves and small black berry circles. Remove both rectangular frame lines. Faithfully extract and clean up this original illustration, preserving its original silhouette, proportions, expressive details and black ink line style; do not redesign it. Deliver ONE isolated high-resolution transparent PNG with clean antialiased black strokes, tightly framed with a small even transparent margin. Remove all text, numbers, unrelated art and every bit of the label frame. All white background, including white interior regions of the line drawing, must become genuinely transparent. No baseline, surrounding box, gray background, checkerboard pixels, color, shadows or extra objects.",
+        "sha256": "ae49cc66fae3e9d30bfeb2dbe07b36394003bd2b64bf3d35335052327a65fe23"
+      }
+    },
+    "cleanupPrompts": [
+      "Correct this existing PNG. Make ALL WHITE FILL inside the illustration completely transparent, preserving exact black drawing lines. Only black ink on true alpha. Remove white/gray fill/shading/glow. No redesign.",
+      "Preserve this black ink bow illustration exactly, but expand the transparent canvas and complete any clipped loop or ribbon tip. The whole bow must fit INSIDE the canvas with clear transparent margin on all four sides. Keep black line drawing with transparent interiors. No frame, no text, no white fills."
+    ]
+  }
+}

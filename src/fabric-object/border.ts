@@ -1,15 +1,22 @@
 import * as fabric from "fabric";
+import { borderImageAtSize, borderImageHref, prepareBorderImages } from "$/utils/border_images";
+import { BORDER_PACKAGES, findBorderPackage, type BorderPreset } from "$/utils/border_catalog";
 import {
   BORDER_ANCHORS,
-  BORDER_PRESETS,
   DEFAULT_BORDER_SETTINGS,
+  borderDefaultAnchor,
+  isBorderPreset,
   borderMinimumSize,
+  borderMinimumDimensions,
   borderPathsSvg,
   layoutBorder,
   type BorderSettings,
 } from "$/utils/border_layout";
 
-export interface BorderProps extends fabric.FabricObjectProps, BorderSettings {}
+export interface BorderProps extends fabric.FabricObjectProps, BorderSettings {
+  borderId?: string;
+  borderVersion?: string;
+}
 export interface SerializedBorderProps extends fabric.SerializedObjectProps, BorderSettings {}
 const BORDER_PROPS = Object.keys(DEFAULT_BORDER_SETTINGS) as (keyof BorderSettings)[];
 const LIMITS: Record<string, [number, number]> = {
@@ -36,13 +43,29 @@ export class LabelBorder
 
   constructor(options: Partial<BorderProps> = {}) {
     super();
-    Object.assign(this, DEFAULT_BORDER_SETTINGS, { width: 160, height: 80, strokeWidth: 0, fill: "none" });
+    const border = findBorderPackage(options.borderId ?? options.preset ?? "rounded");
+    if (options.borderId && !border) throw new Error(`Unknown border package: ${options.borderId}`);
+    if (options.borderVersion && border && options.borderVersion !== border.version)
+      throw new Error(`Unsupported border version: ${border.id}@${options.borderVersion}`);
+    if (options.borderId) options = { ...options, preset: border!.legacyPreset };
+    Object.assign(this, DEFAULT_BORDER_SETTINGS, border?.defaults, {
+      width: 160,
+      height: 80,
+      strokeWidth: 0,
+      fill: "none",
+    });
     const { width = 160, height = 80, ...otherOptions } = options;
     this.setOptions(otherOptions);
     this.set({ width, height });
     this.ensureMinimumSize();
     this.lockScalingFlip = true;
     this.lockSkewingX = this.lockSkewingY = true;
+    void prepareBorderImages()
+      .then(() => {
+        this.dirty = true;
+        this.canvas?.requestRenderAll();
+      })
+      .catch((error) => console.error("Border artwork could not be loaded", error));
     // Default scale handles deform artwork. Resize width/height with Fabric's fixed-anchor wrapper instead.
     this.controls = fabric.controlsUtils.createObjectDefaultControls();
     for (const [name, control] of Object.entries(this.controls)) {
@@ -68,9 +91,13 @@ export class LabelBorder
     return borderMinimumSize(this);
   }
 
+  get minimumDimensions(): { width: number; height: number } {
+    return borderMinimumDimensions(this);
+  }
+
   private ensureMinimumSize() {
-    super._set("width", Math.max(this.width, this.minimumSize));
-    super._set("height", Math.max(this.height, this.minimumSize));
+    super._set("width", Math.max(this.width, this.minimumDimensions.width));
+    super._set("height", Math.max(this.height, this.minimumDimensions.height));
   }
 
   override _set(key: string, value: any): this {
@@ -79,12 +106,15 @@ export class LabelBorder
       const [min, max] = LIMITS[key];
       value = Math.max(min, Math.min(max, value));
     }
-    if (key === "preset" && !Object.hasOwn(BORDER_PRESETS, value)) value = "rounded";
+    if (key === "preset") {
+      if (!isBorderPreset(value)) value = "rounded";
+      super._set("decorationAnchor", borderDefaultAnchor(value));
+    }
     if (key === "decorationAnchor" && !BORDER_ANCHORS.includes(value)) value = "top";
     if (key === "borderColor" && !/^#[0-9a-f]{6}$/i.test(value)) value = "#000000";
     if ((key === "width" || key === "height") && this.decorationSize !== undefined) {
       if (!Number.isFinite(value)) return this;
-      value = Math.max(this.minimumSize, value);
+      value = Math.max(this.minimumDimensions[key], value);
     }
     super._set(key, value);
     if (["preset", "decorationSize", "inset", "lineWidth"].includes(key) && this.decorationSize !== undefined)
@@ -106,7 +136,24 @@ export class LabelBorder
       ctx.save();
       ctx.translate(part.x, part.y);
       ctx.scale(part.scale, part.scale);
-      ctx.lineWidth = this.lineWidth / part.scale;
+      if (part.matrix) ctx.transform(...part.matrix);
+      if (part.image) {
+        const source = { width: part.imageWidth!, height: part.imageHeight! };
+        const transform = ctx.getTransform();
+        const image = borderImageAtSize(
+          part.image,
+          this.borderColor,
+          source.width * Math.hypot(transform.a, transform.b),
+        );
+        // High-resolution ink art needs area filtering when printed at small label sizes.
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        if (image) ctx.drawImage(image, 0, 0, source.width, source.height);
+        ctx.restore();
+        continue;
+      }
+      ctx.lineWidth = (this.lineWidth * (part.weight ?? 1)) / part.scale;
+      ctx.setLineDash((part.dash ?? []).map((n) => n / part.scale));
       const path = new Path2D(part.d);
       if (part.filled) ctx.fill(path);
       else ctx.stroke(path);
@@ -123,13 +170,37 @@ export class LabelBorder
       "<g ",
       "COMMON_PARTS",
       `><g color="${this.borderColor}" transform="scale(${1 / sx} ${1 / sy}) translate(${-width / 2} ${-height / 2})">`,
-      borderPathsSvg(layoutBorder(width, height, this), this.lineWidth),
+      borderPathsSvg(layoutBorder(width, height, this), this.lineWidth, (name) =>
+        borderImageHref(name, this.borderColor),
+      ),
       "</g></g>",
     ];
   }
 
   override toObject(propertiesToInclude: any[] = []) {
-    return super.toObject([...BORDER_PROPS, ...propertiesToInclude]);
+    const border = BORDER_PACKAGES[this.preset as BorderPreset];
+    return {
+      ...super.toObject([...BORDER_PROPS, ...propertiesToInclude]),
+      ...(border ? { borderId: border.id, borderVersion: border.version } : {}),
+    };
+  }
+
+  static override async fromObject<T extends fabric.TOptions<fabric.SerializedObjectProps>>(
+    object: T,
+    options?: fabric.Abortable,
+  ) {
+    const reference = object as T & { borderId?: string; borderVersion?: string; preset?: string };
+    if (reference.borderId) {
+      const border = findBorderPackage(reference.borderId);
+      if (!border) throw new Error(`Unknown border package: ${reference.borderId}`);
+      if (reference.borderVersion && reference.borderVersion !== border.version)
+        throw new Error(`Unsupported border version: ${reference.borderId}@${reference.borderVersion}`);
+      object = { ...object, preset: border.legacyPreset };
+    } else if (reference.preset !== undefined && !isBorderPreset(reference.preset)) {
+      throw new Error(`Unknown border preset: ${reference.preset}`);
+    }
+    await prepareBorderImages();
+    return super.fromObject(object, options);
   }
 }
 

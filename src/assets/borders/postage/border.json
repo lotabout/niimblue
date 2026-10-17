@@ -1,0 +1,36 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.postage",
+  "version": "1.0.0",
+  "legacyPreset": "postage",
+  "name": {
+    "en": "Postage stamp",
+    "zh_cn": "邮票齿孔"
+  },
+  "referenceDesign": 4,
+  "features": {
+    "decoration": false,
+    "repeat": true
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "postage",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {}
+}

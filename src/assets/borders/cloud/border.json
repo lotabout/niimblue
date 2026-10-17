@@ -1,0 +1,47 @@
+{
+  "format": "niimblue-border",
+  "schemaVersion": 1,
+  "id": "niimblue.cloud",
+  "version": "1.0.0",
+  "legacyPreset": "cloud",
+  "name": {
+    "en": "Little cloud",
+    "zh_cn": "轻柔云朵"
+  },
+  "referenceDesign": 20,
+  "features": {
+    "decoration": false,
+    "repeat": false
+  },
+  "defaults": {
+    "decorationSize": 16,
+    "decorationAnchor": "top",
+    "patternSpacing": 6,
+    "lineWidth": 2,
+    "inset": 2,
+    "borderColor": "#000000"
+  },
+  "layout": {
+    "engine": "niimblue-procedural",
+    "version": 1,
+    "recipe": "cloud",
+    "artworkScale": 1.25,
+    "sizing": "fixed",
+    "minimum": {
+      "width": 4,
+      "height": 4
+    }
+  },
+  "assets": {
+    "sparkle": {
+      "type": "paths",
+      "width": 24,
+      "height": 24,
+      "paths": [
+        {
+          "d": "M12 1 Q12 12 23 12 Q12 12 12 23 Q12 12 1 12 Q12 12 12 1 Z"
+        }
+      ]
+    }
+  }
+}

@@ -1,39 +1,55 @@
 # Resizable label borders
 
 Choose **Border** in the insert toolbar, then select a style in the properties panel.
-Drag any of the eight handles to change width/height independently. Corners and decorations
-keep their size; repeated artwork retains its size and gap, with whole tiles centered along
-each available edge. The properties panel also provides dimensions, line width, artwork size,
-inset, color, repeat gap, eight decoration anchors, and **Fit to label**.
+The catalog contains the original **Rounded** style and 17 selected designs from the concept sheet.
+Picker names and asset filenames have no numbered prefixes. Hidden legacy demonstration styles remain readable in old saved labels.
 
-Minimum dimensions prevent decorations from overlapping. Increasing artwork size or inset may
-increase the border dimensions. Fit is disabled if the label cannot contain the current artwork;
-reduce the artwork size or inset first. Dimensions and artwork settings use label canvas pixels,
-so display zoom does not change their printed size.
+Drag any of the eight handles to change width/height independently. Fixed corner and anchored decorations keep their size, and repeated artwork retains whole tiles and spacing. The properties panel provides dimensions, line width, artwork size, inset, color, repeat gap, eight anchors and **Fit to label**. Separate minimum dimensions keep large decorations inside the object.
 
-## Implementation
+PNG botanical, animal and bow decorations are drawn 25% larger than the initial bitmap integration. The olive design uses **frame-height** sizing: its two mirrored sprigs act as the left/right frame, filling the available height with uniform scaling. On narrow, tall labels they stop growing before colliding, retaining a central gap. Their aspect ratio is never stretched. Other styles retain fixed-size decorations as the frame changes dimensions.
 
-- `src/utils/border_layout.ts` holds original 24 × 24 vector motifs, declarative recipes and a pure
-  layout function shared by Canvas rendering, SVG export and style thumbnails.
-- Recipes combine `corners` (fixed artwork at four corners, connected by variable-length edges),
-  `decoration` (fixed-size artwork at a selected anchor), and `repeat` (whole edge tiles).
-  `garden` demonstrates all three behaviors together. Rounded corner geometry also stays fixed.
-  Edge segments leave gaps around decorations instead of covering existing content with white.
-- `src/fabric-object/border.ts` registers `LabelBorder` with Fabric. Its controls change dimensions
-  with a fixed opposite anchor instead of scaling artwork. All border settings are serialized,
-  allowing the existing clone, undo/redo, save/load and print-preview paths to reuse the object.
-- `BorderParamsControls.svelte` provides preset thumbnails and editing controls. English and
-  Simplified Chinese strings are included; other locales use the existing English fallback.
+## Identity and saved labels
 
-To add artwork, add a path to `BORDER_MOTIFS` and reference it in a `BORDER_PRESETS` recipe, then
-add its translated name. These are vector components; importing a flattened SVG or bitmap does
-not automatically infer corner cuts, anchors or tile boundaries. Bitmap nine-slice import and
-arbitrary user-supplied border recipes are not included in this first version.
+A border's package ID is stable and independent of its translated name, picker order or original concept-sheet number. For example, the olive package is `niimblue.olive`; its initial content version is `1.0.0`.
 
-## Verification
+Newly saved `LabelBorder` objects include:
 
-Run `npm test` with Node 22.6+ for layout regressions, plus `npm run sv-check` and `npm run build`.
-Layout tests cover fixed corners, all eight anchors, whole-tile repetition, mixed recipes and
-minimum sizes. Browser verification should also cover rotated corner/edge drags, clone,
-undo/redo, JSON restore and print preview. All bundled artwork is original; no NIIMBOT assets
-or third-party artwork are required.
+```json
+{
+  "type": "LabelBorder",
+  "borderId": "niimblue.olive",
+  "borderVersion": "1.0.0",
+  "preset": "olive",
+  "width": 240,
+  "height": 96,
+  "decorationSize": 16,
+  "borderColor": "#000000"
+}
+```
+
+The existing `preset` field remains a compatibility alias. Objects from older labels containing only this alias still load; new restoration resolves the stable package ID and checks its version. Unknown package IDs or unsupported versions produce an error rather than silently changing the design. Instance settings (position, dimensions, color, anchor, etc.) stay in the label; the reusable artwork and recipe belong to the package. A future package content update must retain the old revision or provide an explicit migration.
+
+## Package storage and transfer
+
+Each `src/assets/borders/<name>/` directory contains one complete package:
+
+- `border.json`: format/schema version, stable ID/content version, localized names, defaults, procedural engine recipe/version, resize mode, scale/minimums, local PNG metadata, vector paths and extraction provenance.
+- `assets/*.png`: all PNGs referenced by that manifest. Shared-looking artwork is deliberately copied into each dependent package, so copying/exporting a directory preserves every dependency. Vite can deduplicate identical production image files by content hash.
+
+PNG metadata records the original image dimensions, alpha bounds and proportional drawing dimensions. The renderer crops transparent padding and applies the selected border color through the alpha channel. Fine ink lines use cached, progressively halved bitmaps at small sizes. SVG exports embed PNG data, sharing one definition for repeated placements.
+
+`border_catalog.ts` is the built-in package index; image keys are scoped to the package ID (for example, `niimblue.meadow/petal`), avoiding collisions between packages. `border_layout.ts` accepts either a built-in package or an independent manifest and builds procedural lines and artwork placements. Common layout code is versioned by the package's `layout.engine`/`layout.version`/`layout.recipe`; arbitrary scripts are not part of the format.
+
+The self-contained transfer format is `.niimborder`, a JSON archive containing the complete manifest and original PNG data URIs. Its envelope has its own format/schema version, distinct from the border's content version. It requires no development-server URL or neighboring files:
+
+```sh
+node --experimental-strip-types scripts/export-border.mjs olive /tmp/olive.niimborder
+```
+
+`border_package.ts` exposes `createBorderArchive`, `serializeBorderArchive` and `parseBorderArchive`. Parsing validates supported versions/recipes, resource completeness, package-relative paths, PNG headers/dimensions, alpha format and crop/aspect metadata. It returns a validated package without overwriting any installed design. Tests demonstrate rendering a renamed package from only its manifest and embedded images. Import/export UI, custom-package installation/persistence, and embedding package dependencies inside an exported _label_ are not yet implemented.
+
+## Implementation and verification
+
+`LabelBorder` is a registered Fabric object. Its controls resize dimensions with a fixed opposite anchor. JSON restoration waits for PNG decoding; clone, undo/redo and print preview use the same rendering path. `BorderParamsControls.svelte` renders the package's localized names and previews.
+
+Run `npm test` with Node 22.6+, `npm run sv-check` and `npm run build-rel`. Border tests cover fixed corners, anchors, repeat spacing, selected styles, minimum dimensions, image proportions, full-height olive frames, all package round trips, missing resources and standalone package rendering. Browser checks cover real pointer drags, rotation, color, restore/clone, print preview and mobile controls.
