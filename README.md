@@ -163,6 +163,8 @@ docker compose --env-file .env.deploy up -d --build
 
 For a portable offline image bundle, run `npm run package:compose` (default `linux/amd64`) or `npm run package:compose -- --platform linux/arm64`. The target machine only needs Docker and Compose. See the [complete deployment, iOS certificate trust and migration guide (中文)](docs/deployment.zh-CN.md). iOS Safari still needs a Web Bluetooth extension such as BeaCIO in addition to trusted HTTPS.
 
+To keep all persistent state in the deployment directory, add `compose.bind.yaml` to the Compose files; it mounts SQLite and Caddy state under `./data/`. The guide covers directory permissions and migrating existing volumes.
+
 #### Serving static files
 
 To get static files run `npm run build` (result builds to `dist`) or download `niimblue-dist.zip` from [Releases](https://github.com/MultiMote/niimblue/releases).

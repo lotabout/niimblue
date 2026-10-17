@@ -6,7 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    init: true
     ports:
       - "${NIIMBLUE_STORAGE_BIND_IP:?Set the Docker host LAN IP in server/.env}:${NIIMBLUE_STORAGE_PUBLISH_PORT:-8787}:8787"
     environment:

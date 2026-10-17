@@ -1,0 +1,22 @@
+# Optional host-directory storage, relative to the first Compose file's directory.
+# Prepare the directories and storage ownership as described in the deployment guide.
+services:
+  web:
+    volumes:
+      - type: bind
+        source: ./data/caddy-data
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/caddy-config
+        target: /config
+        bind:
+          create_host_path: false
+  storage:
+    volumes:
+      - type: bind
+        source: ./data/storage
+        target: /data
+        bind:
+          create_host_path: false

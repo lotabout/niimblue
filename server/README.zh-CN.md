@@ -131,6 +131,7 @@ docker compose up -d --build
 
 | 现象 | 检查方式 |
 | --- | --- |
+| `exec: "docker-init": executable file not found` | 更新此 Compose 配置或删除 `storage` 的 `init: true`，再执行 `docker compose up -d --force-recreate`；无需重建镜像 |
 | 启动提示令牌未设置 | 在 `server/.env` 填好默认 token 或 JSON 用户配置；每个 token 至少 24 位非空白 ASCII 字符，建议使用生成的 64 位十六进制令牌 |
 | 启动提示无法绑定 IP 或端口 | IP 必须属于 Docker 宿主机；端口不能被占用。修改 `.env` 后重新执行 `docker compose up -d` |
 | 电脑连接成功，手机失败 | 检查手机 Wi-Fi、服务器 IP、防火墙、访客网络隔离和浏览器本地网络权限 |

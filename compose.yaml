@@ -28,7 +28,6 @@ services:
     image: niimblue-storage:local
     platform: ${NIIMBLUE_PLATFORM:-linux/amd64}
     restart: unless-stopped
-    init: true
     environment:
       NIIMBLUE_STORAGE_HOST: "0.0.0.0"
       NIIMBLUE_STORAGE_PORT: "8787"

@@ -62,6 +62,7 @@ bash scripts/package-compose.sh --platform linux/amd64 --output /tmp/niimblue-co
 ```text
 niimblue/
   compose.yaml
+  compose.bind.yaml
   .env.deploy.example
   images.tar
   BUILD.txt
@@ -86,6 +87,65 @@ docker compose --env-file .env.deploy ps
 ```
 
 目标机器只需 Docker 和 Compose v2，启动不需要联网。离线包没有 `compose.override.yaml`，因此不会触发源码构建。若只是更新现有部署，保留已有 `.env.deploy` 和数据卷，加载新镜像后执行同一条 `up -d --pull never`。
+
+### 可选：所有持久化数据保存在部署目录下
+
+无需修改应用代码或重建镜像。额外加载 `compose.bind.yaml`，即可把三个挂载点替换为绑定目录：
+
+| 部署目录下的路径 | 内容 | 容器内路径 |
+| --- | --- | --- |
+| `./data/storage/` | SQLite 数据库及 WAL 文件 | `storage:/data` |
+| `./data/caddy-data/` | Caddy CA、证书及私钥 | `web:/data` |
+| `./data/caddy-config/` | Caddy 自动保存的配置 | `web:/config` |
+
+相对路径以第一个 Compose 文件所在目录为基准，通常就是部署目录；并非任意执行命令时的 shell 工作目录。Compose 按容器内的 `target` 合并挂载，因此这三个绑定目录会替换原命名卷，而不是重复挂载。[Docker 合并规则](https://docs.docker.com/reference/compose-file/merge/#unique-resources)
+
+**已有数据时，先按下一小节复制旧卷，再设置 `COMPOSE_FILE`。** 新部署可以直接创建空目录：
+
+```sh
+mkdir -p ./data/storage ./data/caddy-data ./data/caddy-config
+```
+
+为避免以后执行 `up`、`stop`、备份时遗漏 override，建议在 `.env.deploy` 增加以下配置（Linux / macOS）：
+
+```dotenv
+# 离线包或使用已有镜像
+COMPOSE_FILE=compose.yaml:compose.bind.yaml
+```
+
+源码部署需要同时加载构建配置，改用：
+
+```dotenv
+COMPOSE_FILE=compose.yaml:compose.override.yaml:compose.bind.yaml
+```
+
+然后初始化 SQLite 目录权限并启动。镜像需已加载或构建；`run` 仅以 root 调整这个挂载目录的所有者，正常服务仍以镜像中的 `niimblue` 用户运行，无需猜测 UID，也无需开放所有人的写权限：
+
+```sh
+docker compose --env-file .env.deploy config --quiet
+docker compose --env-file .env.deploy run --rm --no-deps --user root storage sh -c 'chown -R niimblue:niimblue /data'
+docker compose --env-file .env.deploy up -d --pull never
+```
+
+源码模式若还没构建镜像，先执行 `docker compose --env-file .env.deploy build`，再执行上面的权限初始化和启动命令。
+
+也可以不设置 `COMPOSE_FILE`，在每条命令中显式加 `-f compose.yaml -f compose.bind.yaml`；源码构建时加 `-f compose.yaml -f compose.override.yaml -f compose.bind.yaml`。指定 `-f` 后不会自动加载源码目录的 `compose.override.yaml`。
+
+根目录 `data/` 已被 Git 忽略，离线打包也不会包含它。`caddy-data` 含 CA 私钥，不应作为网页静态目录分享。切换后，前面导出根证书的 `docker compose cp` 命令仍可使用；也可读取 `./data/caddy-data/caddy/pki/authorities/local/root.crt`。
+
+### 将已有命名卷迁移到部署目录
+
+在设置上述 `COMPOSE_FILE` **之前**，先使用原来的命名卷配置停机并复制完整目录：
+
+```sh
+docker compose --env-file .env.deploy stop
+mkdir -p ./data/storage ./data/caddy-data ./data/caddy-config
+docker compose --env-file .env.deploy cp storage:/data/. ./data/storage/
+docker compose --env-file .env.deploy cp web:/data/. ./data/caddy-data/
+docker compose --env-file .env.deploy cp web:/config/. ./data/caddy-config/
+```
+
+目标目录应为空，避免把不同数据库的 WAL 文件或不同 CA 混在一起。然后在 `.env.deploy` 设置对应的 `COMPOSE_FILE`，执行上一小节的权限初始化和 `up -d --pull never`。原命名卷仍然保留，确认标签正常、CA 未变化后再另行处理。复制原 Caddy 数据可以保留客户端已经信任的 CA；如果直接使用空目录，将生成新 CA 和空标签库。
 
 ## 三、信任 HTTPS 证书（iPhone / iPad / 电脑）
 
@@ -157,6 +217,8 @@ docker compose --env-file .env.deploy up -d --pull never
 
 持久卷默认叫 `niimblue_storage-data`、`niimblue_caddy-data`、`niimblue_caddy-config`。**不要执行 `down -v`，它会删除标签和 CA**。迁移到新机器时，仅搬镜像不会携带数据；如需保留标签和客户端已信任的 CA，可以停机复制：
 
+使用 `compose.bind.yaml` 时，持久数据位于 `./data/`，可在停机后直接备份整个目录并保留文件权限。以下 `docker compose cp` 备份和恢复命令也适用；所有操作均需保留 `.env.deploy` 中的 `COMPOSE_FILE` 或使用同一组 `-f` 参数。
+
 ```sh
 mkdir -p backup
 docker compose --env-file .env.deploy stop
@@ -184,6 +246,7 @@ docker compose --env-file .env.deploy up -d --pull never
 
 | 现象 | 检查方式 |
 | --- | --- |
+| `exec: "docker-init": executable file not found` | 旧配置的 `storage` 含 `init: true`，依赖主机提供 Docker init。更新 `compose.yaml` 或删除该行，再运行 `docker compose --env-file .env.deploy up -d --force-recreate --no-build --pull never`；无需重新构建镜像，数据卷保留 |
 | `storage` 不健康、`web` 没启动 | 查看 `docker compose --env-file .env.deploy logs storage`，确认至少配置一个有效 token，JSON 格式和用户 token 没有重复 |
 | 无法绑定端口 / IP | `NIIMBLUE_BIND_IP` 必须属于主机；检查 80/443 是否被占用，必要时更换发布端口 |
 | 仍有证书警告 | 安装根证书并启用完全信任；确认访问地址与 `NIIMBLUE_HOST` 一致，系统时间正确 |

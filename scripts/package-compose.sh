@@ -51,6 +51,7 @@ docker buildx build --platform "$platform" \
   --tag niimblue-storage:local --load "$repo_dir/server"
 
 cp "$repo_dir/compose.yaml" "$bundle_dir/compose.yaml"
+cp "$repo_dir/compose.bind.yaml" "$bundle_dir/compose.bind.yaml"
 sed "s|^NIIMBLUE_PLATFORM=.*|NIIMBLUE_PLATFORM=$platform|" \
   "$repo_dir/.env.deploy.example" > "$bundle_dir/.env.deploy.example"
 cp "$repo_dir/docs/deployment.zh-CN.md" "$bundle_dir/README.zh-CN.md"

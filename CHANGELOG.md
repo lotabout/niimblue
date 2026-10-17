@@ -1,5 +1,9 @@
 # 2026.10.0
 
+* Add an optional bind-mount Compose configuration to keep SQLite and Caddy state under the deployment directory, including offline bundles and migration instructions.
+
+* Remove the storage Compose dependency on the host's docker-init binary for compatibility with minimal Docker installations.
+
 * Add an all-in-one LAN Compose stack with Caddy local HTTPS, same-origin storage API, persistent certificates and portable amd64/arm64 offline image bundles.
 
 * Add token-based multi-user storage isolation, per-user recovery scope and migration of existing labels to the default user.

@@ -10,3 +10,4 @@ __pycache__/
 .env.deploy
 /release/
 /niimblue-root.crt
+/data/

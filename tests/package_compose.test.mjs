@@ -64,12 +64,17 @@ test("Compose bundles contain images and runtime configuration for each target a
         "BUILD.txt",
         "LICENSE",
         "README.zh-CN.md",
+        "compose.bind.yaml",
         "compose.yaml",
         "images.tar",
       ]);
       assert.equal(
         readFileSync(path.join(bundle, "compose.yaml"), "utf8"),
         readFileSync(path.join(repo, "compose.yaml"), "utf8"),
+      );
+      assert.equal(
+        readFileSync(path.join(bundle, "compose.bind.yaml"), "utf8"),
+        readFileSync(path.join(repo, "compose.bind.yaml"), "utf8"),
       );
       const template = readFileSync(path.join(bundle, ".env.deploy.example"), "utf8");
       assert.ok(template.includes(`NIIMBLUE_PLATFORM=${platform}\n`));
