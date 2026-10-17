@@ -275,5 +275,6 @@
     "workspace.paper.rounded_rect": "Rounded rectangle",
     "workspace.paper.circle": "Circle",
     "workspace.quickprint": "Print with saved settings",
-    "workspace.disconnect": "Disconnect"
+    "workspace.disconnect": "Disconnect",
+    "workspace.properties.close": "Close properties"
 }

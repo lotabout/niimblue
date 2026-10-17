@@ -234,5 +234,6 @@
     "workspace.paper.rounded_rect": "圆角矩形",
     "workspace.paper.circle": "圆形",
     "workspace.quickprint": "使用已保存的参数直接打印",
-    "workspace.disconnect": "断开连接"
+    "workspace.disconnect": "断开连接",
+    "workspace.properties.close": "关闭属性面板"
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Dropdown from "bootstrap/js/dist/dropdown";
   import * as fabric from "fabric";
-  import { onDestroy, onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick, type Snippet } from "svelte";
   import { ArUcoMarker } from "$/fabric-object/aruco";
   import { Barcode } from "$/fabric-object/barcode";
   import { QRCode } from "$/fabric-object/qrcode";
@@ -41,6 +41,15 @@
 
   type DialogName = "none" | "preview" | "label_props" | "saved_labels" | "csv_props" | "icon_picker" | "object_picker";
 
+  interface Props {
+    brand: Snippet;
+    device: Snippet;
+    status: Snippet;
+    workspaceSettings: Snippet;
+  }
+
+  let { brand, device, status, workspaceSettings }: Props = $props();
+  let inspectorOpen = $state(false);
   let htmlCanvas: HTMLCanvasElement;
   let currentDialog = $state<DialogName>("none");
 
@@ -143,6 +152,10 @@
 
     // Esc
     if (key === "escape") {
+      if (inspectorOpen) {
+        inspectorOpen = false;
+        return;
+      }
       discardSelection();
       return;
     }
@@ -552,18 +565,12 @@
 <div class="image-editor">
   <div class="document-bar">
     <div class="document-info">
-      <div class="document-icon"><MdIcon icon="description" /></div>
-      <div>
-        <h2>{labelTitle || $tr("workspace.untitled")}</h2>
-        <span class="save-status" class:has-changes={hasUnsavedChanges} role="status">
-          <span></span>
-          {hasUnsavedChanges
-            ? $tr("workspace.unsaved")
-            : hasSavedLabel
-              ? $tr("workspace.saved")
-              : $tr("workspace.local")}
-        </span>
-      </div>
+      {@render brand()}
+      {#if labelTitle}<span class="document-name" title={labelTitle}>{labelTitle}</span>{/if}
+      <span class="save-status" class:has-changes={hasUnsavedChanges} role="status">
+        <span></span>
+        {hasUnsavedChanges ? $tr("workspace.unsaved") : hasSavedLabel ? $tr("workspace.saved") : $tr("workspace.local")}
+      </span>
     </div>
     <div class="document-actions">
       <button class="btn studio-quiet library-button" onclick={() => (currentDialog = "saved_labels")}>
@@ -587,6 +594,7 @@
         {$tr("editor.print")}
       </button>
     </div>
+    <div class="device-controls">{@render device()}</div>
   </div>
 
   <div class="workspace-layout">
@@ -624,6 +632,14 @@
           <MdIcon icon="expand_more" />
         </button>
         <div class="canvas-actions">
+          <button
+            class="btn studio-quiet properties-toggle"
+            class:active={inspectorOpen}
+            onclick={() => (inspectorOpen = !inspectorOpen)}
+            aria-controls="workspace-inspector"
+            aria-label={$tr("workspace.properties")}
+            title={$tr("workspace.properties")}
+            aria-expanded={inspectorOpen}><MdIcon icon="tune" /> <span>{$tr("workspace.properties")}</span></button>
           <button
             class="btn studio-quiet"
             disabled={undoState.undoDisabled}
@@ -681,119 +697,145 @@
           </div>
         </div>
       </div>
-      <div class="canvas-bottom">
-        <span class="canvas-hint">{$tr("workspace.canvas.hint")}</span>
-        <div class="zoom-controls">
-          <button
-            class="btn studio-quiet"
-            onclick={() => changeZoom("out")}
-            title={$tr("workspace.zoom.out")}
-            aria-label={$tr("workspace.zoom.out")}><MdIcon icon="remove" /></button>
-          <button
-            class="btn studio-quiet zoom-value"
-            onclick={() => changeZoom("reset")}
-            title={$tr("workspace.zoom.reset")}>{zoomText}</button>
-          <button
-            class="btn studio-quiet"
-            onclick={() => changeZoom("in")}
-            title={$tr("workspace.zoom.in")}
-            aria-label={$tr("workspace.zoom.in")}><MdIcon icon="add" /></button>
-          <button
-            class="btn studio-quiet fit-button"
-            class:active={autoFit}
-            onclick={fitToWindow}
-            title={$tr("workspace.fit")}
-            aria-label={$tr("workspace.fit")}><MdIcon icon="fit_screen" /></button>
-        </div>
-      </div>
     </section>
 
-    <aside class="inspector" aria-label={$tr("workspace.properties")}>
+    {#if inspectorOpen}
+      <button
+        class="inspector-backdrop"
+        onclick={() => (inspectorOpen = false)}
+        aria-label={$tr("workspace.properties.close")}></button>
+    {/if}
+    <aside
+      id="workspace-inspector"
+      class="inspector"
+      class:mobile-open={inspectorOpen}
+      aria-label={$tr("workspace.properties")}>
       <div class="inspector-heading">
         <h3>{selectedCount ? $tr("workspace.properties") : $tr("workspace.label")}</h3>
-        <span class="inspector-badge">{selectedCount ? selectedCount : "mm"}</span>
+        <div class="inspector-heading-actions">
+          <span class="inspector-badge">{selectedCount ? selectedCount : "mm"}</span>
+          <button
+            class="btn studio-quiet inspector-close"
+            onclick={() => (inspectorOpen = false)}
+            aria-label={$tr("workspace.properties.close")}><MdIcon icon="close" /></button>
+        </div>
       </div>
-      {#if selectedCount === 0}
-        <div class="inspector-section">
-          <span class="field-caption">{$tr("workspace.size")}</span>
-          <div class="size-value">{labelWidth} <span>×</span> {labelHeight}<small>mm</small></div>
-          <button class="btn studio-secondary w-100" onclick={() => (currentDialog = "label_props")}
-            ><MdIcon icon="tune" /> {$tr("workspace.size.edit")}</button>
-          <div class="label-facts">
-            <span>{$tr("params.label.shape")}</span><strong
-              >{$tr(`workspace.paper.${labelProps.shape ?? "rect"}`)}</strong>
-            <span>{$tr("params.label.direction")}</span><strong
-              >{$tr(
-                labelProps.printDirection === "left" ? "params.label.direction.left" : "params.label.direction.top",
-              )}</strong>
-            <span>{$tr("params.label.head_density")}</span><strong>{Math.round(dpmm * 25.4)} dpi</strong>
-          </div>
-        </div>
-        <div class="inspector-empty">
-          <div class="empty-illustration"><MdIcon icon="touch_app" /></div>
-          <h4>{$tr("workspace.select.title")}</h4>
-          <p>{$tr("workspace.select.hint")}</p>
-          <button class="btn studio-quiet" onclick={() => onObjectPicked("text")}
-            ><MdIcon icon="add" /> {$tr("editor.objectpicker.text")}</button>
-        </div>
-      {:else}
-        {#if selectedObject instanceof fabric.IText}
+      <div class="inspector-content">
+        {#if selectedCount === 0}
           <div class="inspector-section">
-            <label class="field-caption" for="label-text-content">{$tr("workspace.text.content")}</label>
-            <textarea
-              id="label-text-content"
-              class="form-control text-content"
-              rows="3"
-              value={textContent}
-              oninput={(event) => {
-                if (selectedObject instanceof fabric.IText) {
-                  selectedObject.set({ text: event.currentTarget.value });
-                  controlValueUpdated();
-                }
-              }}></textarea>
-          </div>
-        {/if}
-        <div class="inspector-section">
-          <span class="field-caption">{$tr("workspace.appearance")}</span>
-          <div class="property-controls">
-            {#if selectedObject instanceof fabric.IText}
-              <TextParamsControls selectedText={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-            {/if}
-            {#if selectedObject instanceof QRCode}
-              <QrCodeParamsPanel selectedQRCode={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-            {/if}
-            {#if selectedObject instanceof ArUcoMarker}
-              <ArUcoParamsPanel selectedArUco={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-            {/if}
-            {#if selectedObject instanceof Barcode}
-              <BarcodeParamsPanel selectedBarcode={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-            {/if}
-            {#if selectedObject}
-              <VectorParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-            {/if}
-            {#if selectedObject instanceof fabric.IText || selectedObject instanceof QRCode || (selectedObject instanceof Barcode && selectedObject.encoding === "CODE128B")}
-              <VariableInsertControl {selectedObject} valueUpdated={controlValueUpdated} />
-            {/if}
-          </div>
-        </div>
-        {#if selectedObject && selectedCount === 1}
-          <div class="inspector-section">
-            <span class="field-caption">{$tr("workspace.position")}</span>
-            <div class="property-controls">
-              <GenericObjectParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+            <span class="field-caption">{$tr("workspace.size")}</span>
+            <div class="size-value">{labelWidth} <span>×</span> {labelHeight}<small>mm</small></div>
+            <button class="btn studio-secondary w-100" onclick={() => (currentDialog = "label_props")}
+              ><MdIcon icon="tune" /> {$tr("workspace.size.edit")}</button>
+            <div class="label-facts">
+              <span>{$tr("params.label.shape")}</span><strong
+                >{$tr(`workspace.paper.${labelProps.shape ?? "rect"}`)}</strong>
+              <span>{$tr("params.label.direction")}</span><strong
+                >{$tr(
+                  labelProps.printDirection === "left" ? "params.label.direction.left" : "params.label.direction.top",
+                )}</strong>
+              <span>{$tr("params.label.head_density")}</span><strong>{Math.round(dpmm * 25.4)} dpi</strong>
             </div>
           </div>
+          <div class="inspector-empty">
+            <div class="empty-illustration"><MdIcon icon="touch_app" /></div>
+            <h4>{$tr("workspace.select.title")}</h4>
+            <p>{$tr("workspace.select.hint")}</p>
+            <button class="btn studio-quiet" onclick={() => onObjectPicked("text")}
+              ><MdIcon icon="add" /> {$tr("editor.objectpicker.text")}</button>
+          </div>
+        {:else}
+          {#if selectedObject instanceof fabric.IText}
+            <div class="inspector-section">
+              <label class="field-caption" for="label-text-content">{$tr("workspace.text.content")}</label>
+              <textarea
+                id="label-text-content"
+                class="form-control text-content"
+                rows="3"
+                value={textContent}
+                oninput={(event) => {
+                  if (selectedObject instanceof fabric.IText) {
+                    selectedObject.set({ text: event.currentTarget.value });
+                    controlValueUpdated();
+                  }
+                }}></textarea>
+            </div>
+          {/if}
+          <div class="inspector-section">
+            <span class="field-caption">{$tr("workspace.appearance")}</span>
+            <div class="property-controls">
+              {#if selectedObject instanceof fabric.IText}
+                <TextParamsControls selectedText={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              {/if}
+              {#if selectedObject instanceof QRCode}
+                <QrCodeParamsPanel selectedQRCode={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              {/if}
+              {#if selectedObject instanceof ArUcoMarker}
+                <ArUcoParamsPanel selectedArUco={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              {/if}
+              {#if selectedObject instanceof Barcode}
+                <BarcodeParamsPanel
+                  selectedBarcode={selectedObject}
+                  {editRevision}
+                  valueUpdated={controlValueUpdated} />
+              {/if}
+              {#if selectedObject}
+                <VectorParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              {/if}
+              {#if selectedObject instanceof fabric.IText || selectedObject instanceof QRCode || (selectedObject instanceof Barcode && selectedObject.encoding === "CODE128B")}
+                <VariableInsertControl {selectedObject} valueUpdated={controlValueUpdated} />
+              {/if}
+            </div>
+          </div>
+          {#if selectedObject && selectedCount === 1}
+            <div class="inspector-section">
+              <span class="field-caption">{$tr("workspace.position")}</span>
+              <div class="property-controls">
+                <GenericObjectParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              </div>
+            </div>
+          {/if}
+          <div class="selection-actions">
+            <button class="btn studio-secondary" onclick={cloneSelected}
+              ><MdIcon icon="content_copy" /> {$tr("editor.clone")}</button>
+            <button class="btn studio-danger" onclick={deleteSelected}
+              ><MdIcon icon="delete_outline" /> {$tr("editor.delete")}</button>
+          </div>
         {/if}
-        <div class="selection-actions">
-          <button class="btn studio-secondary" onclick={cloneSelected}
-            ><MdIcon icon="content_copy" /> {$tr("editor.clone")}</button>
-          <button class="btn studio-danger" onclick={deleteSelected}
-            ><MdIcon icon="delete_outline" /> {$tr("editor.delete")}</button>
-        </div>
-      {/if}
+      </div>
       <div class="storage-note"><MdIcon icon="info" /><span>{$tr("workspace.storage")}</span></div>
     </aside>
   </div>
+
+  <footer class="workspace-statusbar">
+    <div class="workspace-status">{@render status()}</div>
+    <span class="canvas-hint">{$tr("workspace.canvas.hint")}</span>
+    <div class="workspace-zoom">
+      <div class="zoom-controls">
+        <button
+          class="btn studio-quiet"
+          onclick={() => changeZoom("out")}
+          title={$tr("workspace.zoom.out")}
+          aria-label={$tr("workspace.zoom.out")}><MdIcon icon="remove" /></button>
+        <button
+          class="btn studio-quiet zoom-value"
+          onclick={() => changeZoom("reset")}
+          title={$tr("workspace.zoom.reset")}>{zoomText}</button>
+        <button
+          class="btn studio-quiet"
+          onclick={() => changeZoom("in")}
+          title={$tr("workspace.zoom.in")}
+          aria-label={$tr("workspace.zoom.in")}><MdIcon icon="add" /></button>
+        <button
+          class="btn studio-quiet fit-button"
+          class:active={autoFit}
+          onclick={fitToWindow}
+          title={$tr("workspace.fit")}
+          aria-label={$tr("workspace.fit")}><MdIcon icon="fit_screen" /></button>
+      </div>
+    </div>
+    <div class="workspace-settings">{@render workspaceSettings()}</div>
+  </footer>
 
   {#if currentDialog === "preview"}
     <PrintPreview
@@ -835,42 +877,44 @@
   .image-editor {
     --studio-border: #30343e;
     --studio-muted: #9aa3b4;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 54px minmax(0, 1fr) 32px;
+    overflow: hidden;
   }
   .document-bar {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    margin-bottom: 22px;
+    gap: 18px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--studio-border);
+    background: #20232a;
+    z-index: 30;
   }
   .document-info {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     min-width: 0;
   }
-  .document-icon {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--studio-border);
-    border-radius: 11px;
-    background: #20232b;
-    color: #b3bfce;
-  }
-  h2 {
-    font-size: 18px;
-    font-weight: 650;
-    margin: 0 0 5px;
-    overflow-wrap: anywhere;
+  .document-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #c3cddd;
+    font-size: 12px;
   }
   .save-status {
-    color: var(--studio-muted);
-    font-size: 11px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
+    color: var(--studio-muted);
+    font-size: 10px;
+    white-space: nowrap;
   }
   .save-status > span {
     width: 5px;
@@ -885,14 +929,18 @@
   .canvas-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+  }
+  .device-controls {
+    padding-left: 18px;
+    border-left: 1px solid var(--studio-border);
   }
   .image-editor :global(.btn) {
-    border-radius: 7px;
+    border-radius: 5px;
     font-size: 12px;
   }
   .document-actions > .btn {
-    padding: 9px 13px;
+    padding: 6px 11px;
     white-space: nowrap;
   }
   .studio-quiet {
@@ -922,7 +970,6 @@
     color: #fff;
     background: #4a83ed;
     border: 1px solid #6597f4;
-    box-shadow: 0 3px 12px #174eaf26;
   }
   .studio-primary:hover {
     color: #fff;
@@ -934,26 +981,28 @@
     background: #3a282f;
   }
   .action-divider {
-    height: 20px;
+    height: 18px;
     width: 1px;
     background: var(--studio-border);
     margin: 0 3px;
     flex-shrink: 0;
   }
   .workspace-layout {
+    position: relative;
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr) 282px;
-    border: 1px solid var(--studio-border);
-    border-radius: 14px;
+    grid-template-columns: 76px minmax(0, 1fr) 282px;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
     background: #1e2128;
-    height: max(490px, calc(100dvh - 250px));
   }
   .insert-rail {
-    padding: 12px 8px;
+    min-height: 0;
+    padding: 14px 8px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     border-right: 1px solid var(--studio-border);
     display: flex;
-    align-items: stretch;
     flex-direction: column;
     gap: 6px;
   }
@@ -961,8 +1010,7 @@
     font-size: 10px;
     text-align: center;
     color: #8f99ab;
-    margin: 0 0 6px;
-    letter-spacing: 0.6px;
+    margin: 0 0 8px;
   }
   .insert-tool {
     display: flex;
@@ -970,20 +1018,17 @@
     justify-content: center;
     flex-direction: column;
     gap: 5px;
-    padding: 6px 2px;
+    padding: 9px 2px;
     flex-shrink: 0;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: 7px;
     color: #b4bfd1;
     background: transparent;
     font-size: 10px;
     line-height: 1.3;
-    transition:
-      background 0.15s,
-      color 0.15s;
   }
   .insert-tool :global(.mdi) {
-    font-size: 24px;
+    font-size: 23px;
   }
   .insert-tool:hover,
   .insert-tool.active {
@@ -999,37 +1044,37 @@
   .rail-divider {
     height: 1px;
     background: var(--studio-border);
-    margin: 5px 10px;
+    margin: 5px 8px;
     flex-shrink: 0;
   }
   .canvas-panel {
     min-height: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    min-width: 0;
     background: #191c22;
-    border-radius: 0;
   }
   .canvas-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    min-height: 58px;
-    padding: 10px 16px;
+    height: 46px;
+    flex: 0 0 46px;
+    padding: 6px 14px;
     border-bottom: 1px solid var(--studio-border);
     background: #22262e;
   }
   .size-button {
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 6px 10px;
-    border-radius: 7px;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 5px;
     border: 1px solid #3a414e;
     color: #d3dceb;
     background: #292f39;
-    font-size: 12px;
+    font-size: 11px;
     white-space: nowrap;
   }
   .size-button small {
@@ -1040,12 +1085,13 @@
     gap: 2px;
   }
   .canvas-actions .btn {
-    padding: 5px 7px;
+    padding: 4px 7px;
   }
   .canvas-viewport {
     position: relative;
     flex: 1;
     min-height: 0;
+    min-width: 0;
     background-image: radial-gradient(#41495888 0.8px, transparent 0.8px);
     background-size: 18px 18px;
   }
@@ -1054,6 +1100,7 @@
     inset: 0;
     display: flex;
     overflow: auto;
+    overscroll-behavior: contain;
     padding: 60px 30px;
   }
   .label-on-stage {
@@ -1097,52 +1144,90 @@
     color: #95a0b4;
     white-space: nowrap;
   }
-  .canvas-bottom {
+  .workspace-statusbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 12px 16px;
+    gap: 20px;
+    min-width: 0;
+    padding: 0 12px;
     border-top: 1px solid var(--studio-border);
-    background: #20242c;
+    background: #20232a;
+    color: #98a4b9;
+    font-size: 10px;
+  }
+  .workspace-status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
   }
   .canvas-hint {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 10px;
-    line-height: 1.7;
     color: #98a2b6;
+  }
+  .workspace-zoom {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .workspace-settings {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
   }
   .zoom-controls {
     display: flex;
     align-items: center;
     gap: 1px;
-    flex-shrink: 0;
   }
   .zoom-controls .btn {
-    padding: 3px 5px;
-    font-size: 11px;
+    padding: 2px 5px;
+    font-size: 10px;
   }
   .zoom-controls .zoom-value {
-    min-width: 46px;
+    min-width: 44px;
   }
   .fit-button {
     margin-left: 5px;
   }
   .inspector {
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
+    min-height: 0;
     min-width: 0;
+    overflow: hidden;
     border-left: 1px solid var(--studio-border);
     background: #20232b;
-    border-radius: 0 14px 14px 0;
   }
   .inspector-heading {
-    min-height: 58px;
-    padding: 16px 20px;
+    height: 46px;
+    flex: 0 0 46px;
+    padding: 10px 18px;
     border-bottom: 1px solid var(--studio-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+  }
+  .inspector-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .inspector-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .inspector-close,
+  .properties-toggle,
+  .inspector-backdrop {
+    display: none;
   }
   h3 {
     margin: 0;
@@ -1157,7 +1242,7 @@
     border-radius: 4px;
   }
   .inspector-section {
-    padding: 20px;
+    padding: 18px;
     border-bottom: 1px solid var(--studio-border);
   }
   .field-caption {
@@ -1232,8 +1317,9 @@
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    margin-top: auto;
-    padding: 18px 20px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--studio-border);
+    padding: 12px 16px;
     color: #929eb2;
     font-size: 10px;
     line-height: 1.8;
@@ -1266,93 +1352,158 @@
   }
   .selection-actions {
     display: flex;
-    padding: 20px;
+    padding: 18px;
     gap: 8px;
   }
   .selection-actions .btn {
     flex: 1;
   }
+
   @media (max-width: 1100px) {
+    .document-bar {
+      gap: 10px;
+      padding: 0 12px;
+    }
+    .document-info {
+      gap: 10px;
+    }
+    .document-name {
+      max-width: 100px;
+    }
+    .document-actions .library-button {
+      display: none;
+    }
+    .document-actions > .btn {
+      padding: 6px 9px;
+    }
+    .device-controls {
+      padding-left: 10px;
+    }
     .workspace-layout {
-      grid-template-columns: 72px minmax(0, 1fr) 250px;
+      grid-template-columns: 68px minmax(0, 1fr) 260px;
+    }
+    .workspace-statusbar {
+      gap: 12px;
+    }
+    .workspace-status {
+      gap: 10px;
     }
     .canvas-hint {
-      max-width: 180px;
-    }
-    .inspector-section,
-    .inspector-heading,
-    .inspector-empty {
-      padding: 16px;
-    }
-    .library-button {
       display: none;
     }
   }
   @media (max-width: 850px) {
-    .workspace-layout {
-      height: auto;
-      grid-template-columns: 72px minmax(0, 1fr);
+    .image-editor {
+      grid-template-rows: 88px minmax(0, 1fr) 32px;
     }
-    .inspector {
+    .document-bar {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: 40px 40px;
+      padding: 4px 12px;
+      gap: 0 10px;
+    }
+    .document-info {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .document-actions {
       grid-column: 1 / -1;
-      border-left: 0;
-      border-top: 1px solid var(--studio-border);
-      border-radius: 0 0 14px 14px;
+      grid-row: 2;
     }
-    .inspector-empty {
+    .device-controls {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .save-status {
       display: none;
     }
-    .label-facts {
-      margin-top: 18px;
-      grid-template-columns: repeat(3, auto auto);
-      gap: 10px;
+    .workspace-layout {
+      grid-template-columns: 68px minmax(0, 1fr);
     }
-    .size-value {
-      font-size: 22px;
+    .properties-toggle {
+      display: inline-block;
     }
-    .inspector-section {
-      padding: 16px;
+    .inspector {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: min(320px, 88%);
+      z-index: 20;
+      box-shadow: -12px 0 36px #0005;
     }
-    .storage-note {
-      padding: 12px 16px;
+    .inspector.mobile-open {
+      display: flex;
     }
-    .canvas-viewport {
-      min-height: 360px;
+    .inspector-close {
+      display: inline-block;
+      padding: 1px 4px;
+    }
+    .inspector-backdrop {
+      display: block;
+      position: absolute;
+      inset: 0;
+      border: 0;
+      background: #0005;
+      z-index: 19;
     }
   }
   @media (max-width: 600px) {
+    .image-editor {
+      grid-template-rows: 116px minmax(0, 1fr) 32px;
+    }
     .document-bar {
-      flex-wrap: wrap;
-      gap: 16px;
-      margin-bottom: 16px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: 36px 36px 36px;
+      padding: 4px 10px;
+      gap: 0 8px;
+    }
+    .document-info {
+      grid-row: 1;
+      grid-column: 1 / -1;
+    }
+    .document-name {
+      max-width: 140px;
+    }
+    .save-status {
+      display: flex;
+      margin-left: auto;
+      font-size: 9px;
+    }
+    .device-controls {
+      grid-row: 2;
+      grid-column: 1 / -1;
+      padding-left: 0;
+      border: 0;
     }
     .document-actions {
+      grid-row: 3;
+      grid-column: 1 / -1;
       width: 100%;
       gap: 6px;
     }
     .document-actions > .btn {
       flex: 1;
-      padding: 9px 7px;
       font-size: 11px;
-    }
-    .document-actions .action-divider {
-      display: none;
+      padding: 6px 7px;
     }
     .document-actions .library-button {
       display: inline-block;
     }
-    .document-info h2 {
-      font-size: 17px;
+    .document-actions .action-divider {
+      display: none;
     }
     .workspace-layout {
-      display: flex;
-      flex-direction: column;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 64px minmax(0, 1fr);
     }
     .insert-rail {
       flex-direction: row;
-      padding: 7px;
+      padding: 6px;
       gap: 3px;
       overflow-x: auto;
+      overflow-y: hidden;
       border-right: 0;
       border-bottom: 1px solid var(--studio-border);
     }
@@ -1361,47 +1512,61 @@
       display: none;
     }
     .insert-tool {
-      flex: 1 0 47px;
-      min-height: 62px;
-      padding: 8px 4px;
+      flex: 1 0 45px;
+      gap: 4px;
+      padding: 4px 2px;
       font-size: 9px;
-      gap: 6px;
     }
     .insert-tool :global(.mdi) {
       font-size: 21px;
     }
     .canvas-toolbar {
-      padding: 8px 10px;
+      padding: 6px 8px;
+    }
+    .canvas-actions {
+      gap: 0;
+    }
+    .canvas-actions .btn {
+      padding: 4px 5px;
+      font-size: 11px;
     }
     .canvas-actions .action-divider {
       display: none;
     }
-    .canvas-actions .btn {
+    .size-button {
+      gap: 3px;
+      font-size: 10px;
       padding: 5px;
     }
-    .size-button {
-      gap: 4px;
-      padding: 6px;
-      font-size: 11px;
-    }
-    .canvas-bottom {
-      padding: 9px 10px;
-    }
-    .canvas-hint {
-      max-width: 160px;
-      font-size: 9px;
-    }
-    .canvas-viewport {
-      min-height: 310px;
+    .properties-toggle span {
+      display: none;
     }
     .canvas-scroll {
-      padding: 60px 20px;
-    }
-    .label-facts {
-      grid-template-columns: 1fr auto;
+      padding: 56px 20px;
     }
     .inspector {
-      border-top: 1px solid var(--studio-border);
+      top: 64px;
+    }
+    .inspector-backdrop {
+      top: 64px;
+    }
+    .workspace-statusbar {
+      padding: 0 8px;
+      gap: 8px;
+    }
+    .workspace-status {
+      min-width: 0;
+      flex-shrink: 1;
+      overflow: hidden;
+    }
+    .workspace-settings {
+      gap: 0;
+    }
+    .workspace-zoom {
+      margin-left: auto;
+    }
+    .zoom-controls .btn {
+      padding: 2px 3px;
     }
   }
 </style>

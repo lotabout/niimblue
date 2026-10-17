@@ -22,211 +22,191 @@
 </script>
 
 <div class="page-wrapper">
-  <header class="app-header">
-    <div class="brand">
-      <div class="brand-mark"><MdIcon icon="local_offer" /></div>
-      <div>
-        <h1>Niim<span>Blue{isStandalone ? "s" : ""}</span></h1>
-        <div class="brand-caption">{$tr("workspace.subtitle")}</div>
-      </div>
-    </div>
-    <div class="device-area">
-      <span class="device-status" class:connected={$connectionState === "connected"} role="status">
-        <span class="status-dot"></span>
-        {$tr(`workspace.device.${$connectionState}`)}
-      </span>
-      <PrinterConnector />
-    </div>
-  </header>
-
+  <div class="browser-warnings"><BrowserWarning /></div>
   <main class="app-main">
-    <BrowserWarning />
-    <LabelDesigner />
+    <LabelDesigner>
+      {#snippet brand()}
+        <div class="brand" title={$tr("workspace.subtitle")}>
+          <MdIcon icon="local_offer" />
+          <h1>Niim<span>Blue{isStandalone ? "s" : ""}</span></h1>
+        </div>
+      {/snippet}
+      {#snippet device()}
+        <PrinterConnector />
+      {/snippet}
+      {#snippet status()}
+        <span class="device-status" class:connected={$connectionState === "connected"} role="status">
+          <span class="status-dot"></span>
+          {$tr(`workspace.device.${$connectionState}`)}
+        </span>
+        <span class="local-note" title={$tr("workspace.offline")}
+          ><MdIcon icon="verified_user" /><span>{$tr("workspace.offline")}</span></span>
+      {/snippet}
+      {#snippet workspaceSettings()}
+        <select aria-label="Language" class="form-select form-select-sm" bind:value={$locale}>
+          {#each Object.entries(locales) as [key, name] (key)}
+            <option value={key}>{name}</option>
+          {/each}
+        </select>
+        {#if appVersion}
+          <a
+            class="version-link"
+            href="https://github.com/MultiMote/niimblue/releases/tag/{appVersion}"
+            title={`${$tr("main.built")} ${buildDate}`}>{appVersion}</a>
+        {:else if appCommit}
+          <a
+            class="version-link"
+            href="https://github.com/MultiMote/niimblue/commit/{appCommit}"
+            title={`${$tr("main.built")} ${buildDate}`}>{appCommit.slice(0, 6)}</a>
+        {/if}
+        <a class="source-link" href="https://github.com/MultiMote/niimblue">{$tr("main.code")}</a>
+        <button
+          class="btn btn-sm debug-button"
+          title={$tr("debug.title")}
+          aria-label={$tr("debug.title")}
+          onclick={() => (debugStuffShow = true)}>
+          <MdIcon icon="bug_report" />
+        </button>
+      {/snippet}
+    </LabelDesigner>
   </main>
-
-  <footer class="app-footer">
-    <span class="local-note"><MdIcon icon="verified_user" /> {$tr("workspace.offline")}</span>
-    <div class="footer-links">
-      <select aria-label="Language" class="form-select form-select-sm" bind:value={$locale}>
-        {#each Object.entries(locales) as [key, name] (key)}
-          <option value={key}>{name}</option>
-        {/each}
-      </select>
-      {#if appVersion}
-        <a href="https://github.com/MultiMote/niimblue/releases/tag/{appVersion}">{appVersion}</a>
-      {:else if appCommit}
-        <a href="https://github.com/MultiMote/niimblue/commit/{appCommit}">{appCommit.slice(0, 6)}</a>
-      {/if}
-      <a href="https://github.com/MultiMote/niimblue">{$tr("main.code")}</a>
-      <button
-        class="btn btn-sm"
-        title={$tr("debug.title")}
-        aria-label={$tr("debug.title")}
-        onclick={() => (debugStuffShow = true)}>
-        <MdIcon icon="bug_report" />
-      </button>
-      <span class="build-date">{$tr("main.built")} {buildDate}</span>
-    </div>
-  </footer>
 </div>
 
 {#if debugStuffShow}
   <DebugStuff bind:show={debugStuffShow} />
 {/if}
-
 <AppPrompt />
 
 <style>
   .page-wrapper {
-    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     background: #15171b;
     color: #e7e9ef;
   }
-  .app-header {
+  .browser-warnings {
+    flex: 0 0 auto;
+    max-height: 25dvh;
+    overflow-y: auto;
+  }
+  .browser-warnings :global(.alert) {
+    margin: 0;
+    border-radius: 0;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 12px;
+  }
+  .app-main {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 16px 32px;
-    border-bottom: 1px solid #2b2e36;
-    background: #1b1d23;
+    overflow: hidden;
   }
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     flex-shrink: 0;
   }
-  .brand-mark {
+  .brand > :global(.mdi) {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    width: 27px;
+    height: 27px;
     color: #b9d2ff;
     background: #293d60;
     border: 1px solid #3b527a;
-    border-radius: 12px;
+    border-radius: 7px;
+    font-size: 17px;
   }
   h1 {
     margin: 0;
-    font-size: 21px;
-    font-weight: 750;
-    letter-spacing: -0.7px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
   }
   h1 span {
     color: #86b3ff;
   }
-  .brand-caption {
-    margin-top: 2px;
-    color: #939aa9;
-    font-size: 11px;
-    letter-spacing: 1px;
-  }
-  .device-area {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-  }
   .device-status {
     display: flex;
     align-items: center;
-    gap: 7px;
-    color: #a2a8b6;
-    font-size: 12px;
+    gap: 6px;
     white-space: nowrap;
   }
   .status-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: #777f90;
+    background: #818b9e;
   }
   .connected .status-dot {
     background: #6ed6ad;
   }
-  .app-main {
-    flex: 1;
-    width: 100%;
-    max-width: 1640px;
-    padding: 24px 32px 12px;
-    margin: 0 auto;
-  }
-  .app-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    max-width: 1640px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 12px 32px 20px;
-    color: #929aaa;
-    font-size: 11px;
-  }
   .local-note {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 5px;
+    white-space: nowrap;
   }
-  .local-note :global(.mdi) {
+  .local-note > :global(.mdi) {
     color: #85bfa9;
+    font-size: 13px;
   }
-  .footer-links {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-  }
-  .footer-links a {
-    color: #929aaa;
-    text-decoration: none;
-  }
-  .footer-links a:hover {
-    color: #c4d7ff;
-  }
-  .footer-links .form-select {
-    width: auto;
-    max-width: 160px;
-    font-size: 11px;
+  .form-select {
+    width: 112px;
+    height: 23px;
+    padding-top: 1px;
+    padding-bottom: 1px;
     background-color: transparent;
     border-color: #343843;
+    font-size: 10px;
+    color: #aeb8ca;
   }
-  .footer-links .btn {
-    padding: 0;
-    color: #929aaa;
+  a {
+    color: #9ca8bc;
+    font-size: 10px;
+    text-decoration: none;
   }
-  @media (max-width: 900px) {
-    .device-status {
-      display: none;
-    }
-    .build-date {
+  a:hover {
+    color: #c4d7ff;
+  }
+  .debug-button {
+    padding: 1px 2px;
+    color: #9ca8bc;
+    font-size: 11px;
+  }
+  @media (max-width: 1050px) {
+    .local-note span,
+    .version-link {
       display: none;
     }
   }
   @media (max-width: 600px) {
-    .app-header {
-      padding: 14px 16px;
-      flex-wrap: wrap;
-      gap: 14px;
+    .brand {
+      gap: 6px;
     }
-    .device-area {
-      width: 100%;
-      justify-content: flex-start;
+    h1 {
+      font-size: 13px;
     }
-    .device-status {
+    .brand > :global(.mdi) {
+      width: 23px;
+      height: 23px;
+      font-size: 15px;
+    }
+    .local-note,
+    .source-link,
+    .debug-button {
       display: none;
     }
-    .app-main {
-      padding: 16px 12px 8px;
+    .device-status {
+      font-size: 9px;
     }
-    .app-footer {
-      padding: 12px 16px;
-    }
-    .brand-mark {
-      width: 34px;
-      height: 34px;
+    .form-select {
+      width: 96px;
     }
   }
 </style>
