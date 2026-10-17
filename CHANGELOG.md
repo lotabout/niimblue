@@ -1,5 +1,6 @@
 # 2026.10.0
 
+* Fix iOS Bluetooth connections to B1 with BeaCIO by preferring supported writes with response, unfiltered scanning and the printer data channel; handle replies arriving before write completion.
 * Fix B1 CSV batch printing compatibility by using separate sessions per page; add a batch printing mode selector.
 * Fix Arabic RTL text cursor and selection
 * Parse nested variables (example: `{dt+{var}d}`).

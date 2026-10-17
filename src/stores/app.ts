@@ -28,6 +28,7 @@ import { APP_CONFIG_DEFAULTS, CSV_DEFAULT, OBJECT_DEFAULTS_TEXT } from "$/defaul
 import z from "zod";
 import { FileUtils } from "$/utils/file_utils";
 import { createPrinterInfo } from "@mmote/niimbluelib/dist/cjs/client/abstract_client";
+import { BluetoothClient } from "$/utils/bluetooth_client";
 
 export const fontCache = writable<string[]>([OBJECT_DEFAULTS_TEXT.fontFamily]);
 export const appConfig = writablePersisted<AppConfig>("config", AppConfigSchema, APP_CONFIG_DEFAULTS);
@@ -67,7 +68,7 @@ export const initClient = (connectionType: ConnectionType) => {
         prevClient.disconnect();
       }
 
-      newClient = instantiateClient(connectionType);
+      newClient = connectionType === "bluetooth" ? new BluetoothClient() : instantiateClient(connectionType);
 
       const conf = get(appConfig);
 

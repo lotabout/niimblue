@@ -65,6 +65,9 @@ In some systems you need to enable Chrome `Web Bluetooth` or `Experimental Web P
 Safari: while, this browser has no native `Web Bluetooth`, there is [beacio extension](https://beacio.com/) that enables Web Bluetooth under Safari.
 Setup details available [here](https://beacio.com/setup).
 
+On iOS, the app prefers writes with response when the printer characteristic supports them;
+this avoids repeat-write failures observed with BeaCIO and B1. Printers exposing only writes without response still use that method.
+
 ## Images
 
 Images may be outdated.
