@@ -22,7 +22,9 @@ const LabelDraftSchema = z.object({
   label: ExportedLabelTemplateSchema.omit({ id: true }),
   csvData: CsvParamsSchema.optional(),
   document: z.object({
-    id: z.string().startsWith("saved_label_").optional(),
+    id: z.string().min(1).optional(),
+    storageKey: z.string().optional(),
+    storageRevision: z.number().int().positive().optional(),
     title: z.string(),
     baseline: z.string(),
   }),

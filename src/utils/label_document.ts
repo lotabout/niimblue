@@ -2,6 +2,8 @@ import type { CsvParams, ExportedLabelTemplate } from "../types";
 
 export interface LabelDocumentState {
   id?: string;
+  storageKey?: string;
+  storageRevision?: number;
   title: string;
   baseline: string;
 }
@@ -71,8 +73,17 @@ export function createLabelDocument(label: ExportedLabelTemplate, id?: string): 
   return { id, title: label.title ?? "", baseline: labelFingerprint(label) };
 }
 
-export function restoreLabelDocument(draft: LabelDraft, savedLabel: ExportedLabelTemplate | null): LabelDocumentState {
-  if (!draft.document.id) return { ...draft.document };
+export function restoreLabelDocument(
+  draft: LabelDraft,
+  savedLabel: ExportedLabelTemplate | null,
+  currentStorageKey = "local",
+): LabelDocumentState {
+  if ((draft.document.storageKey ?? "local") !== currentStorageKey) {
+    return { title: draft.document.title, baseline: "", storageKey: currentStorageKey };
+  }
+  // Remote drafts retain their saved baseline and revision while offline. Never adopt a newer
+  // remote revision without loading its content, as that would bypass conflict protection.
+  if (currentStorageKey !== "local" || !draft.document.id) return { ...draft.document };
   // A deleted original must become a new document instead of overwriting a different label.
   return savedLabel
     ? { ...draft.document, baseline: labelFingerprint(savedLabel) }

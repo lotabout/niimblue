@@ -39,6 +39,16 @@
   import { LabelDesignerUtils } from "$/utils/label_designer_utils";
   import SavedLabelsMenu from "$/components/dialogs/SavedLabelsMenu.svelte";
   import SaveLabelDialog from "$/components/dialogs/SaveLabelDialog.svelte";
+  import StorageSettings from "$/components/dialogs/StorageSettings.svelte";
+  import {
+    createLabelStorage,
+    setStorageConfig,
+    storageConfig,
+    storageKey,
+    StorageError,
+    type StorageConfig,
+    type StoredLabel,
+  } from "$/utils/label_storage";
   import {
     createLabelDocument,
     hasLabelChanges,
@@ -55,6 +65,7 @@
     | "label_props"
     | "saved_labels"
     | "save_label"
+    | "storage_settings"
     | "csv_props"
     | "icon_picker"
     | "object_picker";
@@ -86,6 +97,7 @@
   let loadingDocument = $state(false);
   let contentRevision = $state(0);
   let saveAs = $state(false);
+  let savingDocument = $state(false);
   let draftSaveFailed = $state(false);
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let stageWidth = $state(0);
@@ -313,13 +325,17 @@
     title: documentState.title,
   });
 
-  const onLoadRequested = async (label: ExportedLabelTemplate): Promise<boolean> => {
-    if (loadingDocument) return false;
+  const onLoadRequested = async (label: StoredLabel): Promise<boolean> => {
+    if (loadingDocument || savingDocument) return false;
     const previous = documentReady ? snapshotCurrentLabel() : undefined;
     try {
       await loadLabelData(label);
       const normalized = { ...snapshotCurrentLabel(), title: label.title ?? "" };
-      documentState = createLabelDocument(normalized, label.id);
+      documentState = {
+        ...createLabelDocument(normalized, label.id),
+        storageKey: storageKey(),
+        storageRevision: label.storageRevision,
+      };
       undo.reset();
       pushUndo();
       hasUnsavedChanges = false;
@@ -338,36 +354,54 @@
     }
   };
 
-  const saveCurrentLabel = (title: string, asCopy: boolean): boolean => {
+  const storageFailure = (error: unknown) => {
+    Toasts.error(error instanceof StorageError ? $tr(`storage.error.${error.code}`) : error);
+  };
+
+  const saveCurrentLabel = async (title: string, asCopy: boolean): Promise<boolean> => {
+    if (savingDocument || loadingDocument) return false;
+    savingDocument = true;
     try {
       const label = { ...exportCurrentLabel(), title };
-      const saved = LocalStoragePersistence.saveLabel(label, asCopy ? undefined : documentState.id);
-      documentState = createLabelDocument(saved, saved.id);
+      const scope = storageKey();
+      const sameStorage = (documentState.storageKey ?? "local") === scope;
+      const id = asCopy || !sameStorage ? undefined : documentState.id;
+      const saved = await createLabelStorage().save(label, id, id ? documentState.storageRevision : undefined);
+      documentState = {
+        ...createLabelDocument(saved, saved.id),
+        storageKey: scope,
+        storageRevision: saved.storageRevision,
+      };
       pushUndo();
-      hasUnsavedChanges = false;
+      hasUnsavedChanges = hasLabelChanges(snapshotCurrentLabel(), documentState.baseline);
       flushDraft();
       Toasts.message($tr("workspace.save.success"));
       return true;
     } catch (e) {
-      Toasts.error(e);
+      storageFailure(e);
       return false;
+    } finally {
+      savingDocument = false;
     }
   };
 
   const requestSave = (asCopy = false) => {
-    if (!documentReady || loadingDocument || currentDialog !== "none") return;
-    try {
-      if (documentState.id && !LocalStoragePersistence.loadLabel(documentState.id)) {
-        documentState = { title: documentState.title, baseline: "" };
-      }
-      if (asCopy || !documentState.id || !documentState.title.trim()) {
-        saveAs = asCopy;
-        currentDialog = "save_label";
-      } else {
-        saveCurrentLabel(documentState.title, false);
-      }
-    } catch (e) {
-      Toasts.error(e);
+    if (!documentReady || loadingDocument || savingDocument || currentDialog !== "none") return;
+    if (asCopy || !documentState.id || !documentState.title.trim()) {
+      saveAs = asCopy;
+      currentDialog = "save_label";
+    } else {
+      void saveCurrentLabel(documentState.title, false);
+    }
+  };
+
+  const applyStorage = (config: StorageConfig) => {
+    const previousKey = storageKey();
+    setStorageConfig(config);
+    if (previousKey !== storageKey() && documentReady) {
+      documentState = { title: documentState.title, baseline: "", storageKey: storageKey() };
+      markDocumentChanged();
+      flushDraft();
     }
   };
 
@@ -379,7 +413,7 @@
   };
 
   const newDocument = async () => {
-    if (!documentReady || loadingDocument) return;
+    if (!documentReady || loadingDocument || savingDocument) return;
     if (hasUnsavedChanges && !confirm($tr("workspace.new.confirm"))) return;
     try {
       const template = LocalStoragePersistence.loadDefaultTemplate();
@@ -542,12 +576,14 @@
         if (draft.csvData) $csvData = draft.csvData;
         let original: ExportedLabelTemplate | null = null;
         try {
-          original = draft.document.id ? LocalStoragePersistence.loadLabel(draft.document.id) : null;
+          if ($storageConfig.mode === "local" && (draft.document.storageKey ?? "local") === "local") {
+            original = draft.document.id ? LocalStoragePersistence.loadLabel(draft.document.id) : null;
+          }
         } catch (e) {
           // The working copy is still recoverable even if the original is damaged.
           Toasts.error(e);
         }
-        documentState = restoreLabelDocument(draft, original);
+        documentState = restoreLabelDocument(draft, original, storageKey());
         hasUnsavedChanges = hasLabelChanges(snapshotCurrentLabel(), documentState.baseline);
         if (hasUnsavedChanges || !documentState.id) Toasts.message($tr("workspace.draft.restored"));
         return;
@@ -567,7 +603,7 @@
     }
 
     LabelDesignerObjectHelper.addText(fabricCanvas!, $tr("editor.default_text"));
-    documentState = createLabelDocument(snapshotCurrentLabel());
+    documentState = { ...createLabelDocument(snapshotCurrentLabel()), storageKey: storageKey() };
   };
 
   const renderOnFontsChanged = () => {
@@ -788,19 +824,28 @@
             ? $tr("workspace.never_saved")
             : hasUnsavedChanges
               ? $tr("workspace.unsaved")
-              : $tr("workspace.saved")}
+              : $tr(
+                  savingDocument
+                    ? "storage.saving"
+                    : $storageConfig.mode === "remote"
+                      ? "storage.saved.remote"
+                      : "workspace.saved",
+                )}
       </span>
     </div>
     <div class="document-actions">
       <button
         class="btn studio-quiet library-button"
-        disabled={loadingDocument}
+        disabled={savingDocument || loadingDocument}
         onclick={() => (currentDialog = "saved_labels")}>
         <MdIcon icon="folder_open" />
         {$tr("workspace.library")}
       </button>
       <div class="btn-group document-save">
-        <button class="btn studio-secondary" onclick={() => requestSave()} disabled={!documentReady || loadingDocument}>
+        <button
+          class="btn studio-secondary"
+          onclick={() => requestSave()}
+          disabled={!documentReady || loadingDocument || savingDocument}>
           <MdIcon icon="save" />
           {$tr("workspace.save")}
         </button>
@@ -809,7 +854,7 @@
           data-bs-toggle="dropdown"
           aria-expanded="false"
           aria-label={$tr("workspace.document.actions")}
-          disabled={!documentReady || loadingDocument}></button>
+          disabled={!documentReady || loadingDocument || savingDocument}></button>
         <ul class="dropdown-menu">
           <li><button class="dropdown-item" onclick={() => requestSave(true)}>{$tr("workspace.save_as")}</button></li>
           <li><button class="dropdown-item" onclick={newDocument}>{$tr("workspace.new")}</button></li>
@@ -1043,7 +1088,10 @@
           </div>
         {/if}
       </div>
-      <div class="storage-note"><MdIcon icon="info" /><span>{$tr("workspace.storage")}</span></div>
+      <div class="storage-note">
+        <MdIcon icon="info" /><span
+          >{$tr($storageConfig.mode === "remote" ? "storage.save.hint" : "workspace.storage")}</span>
+      </div>
     </aside>
   </div>
 
@@ -1074,7 +1122,17 @@
           aria-label={$tr("workspace.fit")}><MdIcon icon="fit_screen" /></button>
       </div>
     </div>
-    <div class="workspace-settings">{@render workspaceSettings()}</div>
+    <div class="workspace-settings">
+      <button
+        class="btn btn-sm text-secondary"
+        disabled={savingDocument || loadingDocument}
+        onclick={() => (currentDialog = "storage_settings")}
+        title={$tr("storage.title")}>
+        <MdIcon icon="storage" />
+        {$tr("storage.title")}
+      </button>
+      {@render workspaceSettings()}
+    </div>
   </footer>
 
   {#if currentDialog === "preview"}
@@ -1096,6 +1154,8 @@
       {onLoadRequested}
       {csvEnabled}
       {hasUnsavedChanges} />
+  {:else if currentDialog === "storage_settings"}
+    <StorageSettings onApply={applyStorage} onClose={() => (currentDialog = "none")} />
   {:else if currentDialog === "save_label"}
     <SaveLabelDialog
       initialTitle={documentState.title}

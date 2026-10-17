@@ -1,0 +1,43 @@
+name: niimblue-storage
+
+services:
+  storage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${NIIMBLUE_STORAGE_BIND_IP:?Set the Docker host LAN IP in server/.env}:${NIIMBLUE_STORAGE_PUBLISH_PORT:-8787}:8787"
+    environment:
+      # Inside the container, listen on all interfaces; the host binding above
+      # controls which host interface accepts connections from other devices.
+      NIIMBLUE_STORAGE_HOST: "0.0.0.0"
+      NIIMBLUE_STORAGE_PORT: "8787"
+      NIIMBLUE_STORAGE_DB: /data/labels.sqlite3
+      # Configure a legacy/default token, per-user tokens, or both.
+      NIIMBLUE_STORAGE_TOKEN: "${NIIMBLUE_STORAGE_TOKEN:-}"
+      NIIMBLUE_STORAGE_USERS: "${NIIMBLUE_STORAGE_USERS:-}"
+      NIIMBLUE_STORAGE_ORIGINS: "${NIIMBLUE_STORAGE_ORIGINS:?Set the web app origin in server/.env}"
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import json, os, urllib.request;
+          token = os.environ.get('NIIMBLUE_STORAGE_TOKEN') or next(iter(json.loads(os.environ.get('NIIMBLUE_STORAGE_USERS') or '{}').values()));
+          request = urllib.request.Request('http://127.0.0.1:8787/api/v1/health', headers={'Authorization': 'Bearer ' + token});
+          response = urllib.request.urlopen(request, timeout=3);
+          payload = json.load(response);
+          response.close();
+          assert payload.get('apiVersion') == 1 and payload.get('storage') == 'sqlite'
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  storage-data:

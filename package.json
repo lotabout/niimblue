@@ -7,6 +7,8 @@
 		"test": "node --experimental-strip-types --test tests/*.test.mjs",
 		"dev-check": "npm run sv-check && npm run dev",
 		"dev": "vite",
+		"storage-server": "python3 server/storage_server.py",
+		"test:storage-server": "python3 -m unittest discover -s server -p 'test_*.py'",
 		"dev-local-lib": "vite --force",
 		"build": "vite build",
 		"build-rel": "vite build --base=./",

@@ -289,3 +289,40 @@ test("editing after undoing to the first state replaces the abandoned redo branc
   await history.redo();
   assert.deepEqual(updates, ["A", "A", "C"]);
 });
+
+test("remote recovery preserves the saved revision and baseline offline, and switching servers detaches identity", () => {
+  const saved = label();
+  const document = {
+    ...createLabelDocument(saved, "884ec8c6-8a3d-4acc-a236-a106a50b2205"),
+    storageKey: "remote:https://storage.example.com",
+    storageRevision: 3,
+  };
+  const draft = { version: 1, label: { ...saved, title: "Offline edit" }, document };
+  persistence.saveLabelDraft(draft);
+  const recovered = persistence.loadLabelDraft();
+  assert.equal(recovered.document.storageRevision, 3);
+  const restored = restoreLabelDocument(recovered, label({ title: "Newer remote version" }), document.storageKey);
+  assert.deepEqual(restored, document);
+  assert.notEqual(labelFingerprint(recovered.label), restored.baseline);
+  for (const target of ["local", "remote:https://another.example.com"]) {
+    const detached = restoreLabelDocument(recovered, null, target);
+    assert.equal(detached.id, undefined);
+    assert.equal(detached.storageRevision, undefined);
+    assert.equal(detached.storageKey, target);
+    assert.equal(detached.baseline, "");
+  }
+});
+
+test("recovery detaches a different user's draft on the same service", () => {
+  const saved = label();
+  const scope = "remote:https://storage.example.com#user:alice";
+  const document = { ...createLabelDocument(saved, "alice-label"), storageKey: scope, storageRevision: 2 };
+  const draft = { version: 1, label: saved, document };
+  const own = restoreLabelDocument(draft, null, scope);
+  assert.equal(own.id, "alice-label");
+  assert.equal(own.storageRevision, 2);
+  const other = restoreLabelDocument(draft, saved, "remote:https://storage.example.com#user:bob");
+  assert.equal(other.id, undefined);
+  assert.equal(other.storageRevision, undefined);
+  assert.equal(other.baseline, "");
+});

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { tr } from "$/utils/i18n";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import MdIcon from "$/components/basic/MdIcon.svelte";
   import SavedLabelsBrowser from "$/components/designer-controls/SavedLabelsBrowser.svelte";
   import { ExportedLabelTemplateSchema, type ExportedLabelTemplate } from "$/types";
+  import { createLabelStorage, storageConfig, StorageError, type StoredLabel } from "$/utils/label_storage";
   import { LocalStoragePersistence } from "$/utils/persistence";
   import { Toasts } from "$/utils/toasts";
   import { FileUtils } from "$/utils/file_utils";
@@ -14,7 +15,7 @@
 
   interface Props {
     onRequestLabelTemplate: () => ExportedLabelTemplate;
-    onLoadRequested: (label: ExportedLabelTemplate) => Promise<boolean>;
+    onLoadRequested: (label: StoredLabel) => Promise<boolean>;
     onClose?: () => void;
     onDelete: (id: string) => void;
     canvas: fabric.Canvas;
@@ -25,9 +26,33 @@
   let { onRequestLabelTemplate, onLoadRequested, canvas, csvEnabled, onClose, onDelete, hasUnsavedChanges }: Props =
     $props();
 
-  let savedLabels = $state<ExportedLabelTemplate[]>([]);
+  let savedLabels = $state<StoredLabel[]>([]);
   let selectedIndex = $state<number>(-1);
+  let active = true;
+  onDestroy(() => {
+    active = false;
+  });
   let loading = $state(false);
+  let error = $state("");
+  const storage = createLabelStorage();
+  const reportError = (e: unknown) => {
+    error = e instanceof StorageError ? $tr(`storage.error.${e.code}`) : String(e);
+    Toasts.error(error);
+  };
+  const refresh = async () => {
+    if (loading) return;
+    loading = true;
+    error = "";
+    try {
+      savedLabels = await storage.list();
+      selectedIndex = -1;
+      calcUsedSpace();
+    } catch (e) {
+      reportError(e);
+    } finally {
+      loading = false;
+    }
+  };
   let usedSpace = $state<number>(0);
   let customDefaultTemplate = $state<boolean>(LocalStoragePersistence.hasCustomDefaultTemplate());
   let isStandalone = Utils.getAvailableTransports().capacitorBle;
@@ -49,16 +74,20 @@
     }
   };
 
-  const onLabelDelete = (idx: number) => {
+  const onLabelDelete = async (idx: number) => {
+    if (loading) return;
+    loading = true;
     try {
       const id = savedLabels[idx].id!;
-      LocalStoragePersistence.deleteLabel(id);
+      await storage.delete(id, savedLabels[idx].storageRevision);
       savedLabels = savedLabels.filter((_, index) => index !== idx);
       selectedIndex = -1;
       onDelete(id);
       calcUsedSpace();
     } catch (e) {
-      Toasts.error(e);
+      reportError(e);
+    } finally {
+      loading = false;
     }
   };
 
@@ -86,13 +115,18 @@
 
   const onLoadClicked = async () => {
     if (selectedIndex === -1 || loading) return;
-    const label = savedLabels[selectedIndex];
-    let message = hasUnsavedChanges ? $tr("editor.warning.load") : "";
-    if (label.csv) message += "\n" + $tr("editor.warning.load.csv");
-    if (message && !confirm(message)) return;
     loading = true;
     try {
+      // Fetch again so opening a label includes changes saved by another device.
+      const label = await storage.load(savedLabels[selectedIndex].id!);
+      if (!active) return;
+      if (!label) throw new StorageError("missing");
+      let message = hasUnsavedChanges ? $tr("editor.warning.load") : "";
+      if (label.csv) message += "\n" + $tr("editor.warning.load.csv");
+      if (message && !confirm(message)) return;
       if (await onLoadRequested(label)) modalRef.hide();
+    } catch (e) {
+      reportError(e);
     } finally {
       loading = false;
     }
@@ -111,11 +145,8 @@
         return;
       }
 
-      const { zodErrors, otherErrors } = LocalStoragePersistence.appendLabels(items);
-      zodErrors.forEach((e) => Toasts.zodErrors(e, "Label import error:"));
-      otherErrors.forEach((e) => Toasts.error(e));
-      if (zodErrors.length !== 0 || otherErrors.length !== 0) return;
-      savedLabels = LocalStoragePersistence.loadLabels();
+      await storage.import(items);
+      savedLabels = await storage.list();
       selectedIndex = -1;
       calcUsedSpace();
 
@@ -128,7 +159,7 @@
       if (e instanceof z.ZodError) {
         Toasts.zodErrors(e, "Label import error:");
       } else {
-        Toasts.error(e);
+        reportError(e);
       }
     } finally {
       loading = false;
@@ -184,15 +215,19 @@
   };
 
   onMount(() => {
-    savedLabels = LocalStoragePersistence.loadLabels();
-    calcUsedSpace();
+    void refresh();
   });
 </script>
 
 <AppModal title={$tr("workspace.library")} {onClose} bind:this={modalRef}>
   <div class="mb-1">
-    {usedSpace}
-    {$tr("params.saved_labels.kb_used")}
+    <span>{$tr($storageConfig.mode === "remote" ? "storage.remote" : "storage.local")}</span>
+    {#if $storageConfig.mode === "local"}
+      · {usedSpace} {$tr("params.saved_labels.kb_used")}
+    {/if}
+    <button class="btn btn-sm btn-outline-secondary ms-2" disabled={loading} onclick={refresh}
+      >{$tr(loading ? "storage.loading" : "storage.refresh")}</button>
+    {#if error}<div class="alert alert-danger mt-2" role="alert">{error}</div>{/if}
 
     {#if csvEnabled}
       <div class="pt-1 text-warning">
@@ -269,7 +304,7 @@
     {#if selectedIndex !== -1}
       <button class="btn btn-sm btn-primary" onclick={onLoadClicked} disabled={loading}>
         <MdIcon icon="folder" />
-        {$tr("params.saved_labels.load.browser")}
+        {$tr("storage.open")}
       </button>
     {/if}
   {/snippet}

@@ -1,5 +1,10 @@
 # 2026.10.0
 
+* Add token-based multi-user storage isolation, per-user recovery scope and migration of existing labels to the default user.
+
+* Add selectable browser or self-hosted SQLite label storage, connection settings and cross-device conflict protection; allow HTTP storage on private IPv4 LAN addresses.
+* Add Docker Compose deployment for shared storage with a persistent SQLite volume, authenticated health checks and LAN connection instructions.
+
 * Fix iOS Bluetooth connections to B1 with BeaCIO by preferring supported writes with response, unfiltered scanning and the printer data channel; handle replies arriving before write completion.
 * Fix B1 CSV batch printing compatibility by using separate sessions per page; add a batch printing mode selector.
 * Fix Arabic RTL text cursor and selection

@@ -7,6 +7,7 @@
   import DebugStuff from "$/components/dialogs/DebugStuff.svelte";
   import MdIcon from "$/components/basic/MdIcon.svelte";
   import AppPrompt from "$/components/dialogs/AppPrompt.svelte";
+  import { storageConfig } from "$/utils/label_storage";
   import { connectionState } from "$/stores/app";
 
   // eslint-disable-next-line no-undef
@@ -39,8 +40,10 @@
           <span class="status-dot"></span>
           {$tr(`workspace.device.${$connectionState}`)}
         </span>
-        <span class="local-note" title={$tr("workspace.offline")}
-          ><MdIcon icon="verified_user" /><span>{$tr("workspace.offline")}</span></span>
+        <span class="local-note" title={$tr($storageConfig.mode === "remote" ? "storage.remote" : "workspace.offline")}
+          ><MdIcon icon="verified_user" /><span
+            >{$tr($storageConfig.mode === "remote" ? "storage.remote" : "workspace.offline")}</span
+          ></span>
       {/snippet}
       {#snippet workspaceSettings()}
         <select aria-label="Language" class="form-select form-select-sm" bind:value={$locale}>

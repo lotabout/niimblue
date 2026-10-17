@@ -25,7 +25,7 @@ Give thanks:
 
 ## Features
 
-* Privacy first! This application works completely offline (at browser side) and does not send any data (except for downloading application files and importing ZPL labels). Label data is stored in your browser.
+* Privacy first! By default, editing and label storage work locally in your browser (network access is used to download application files and import ZPL labels). Optionally connect your own storage service to share saved labels across devices.
 * Support for both Bluetooth and USB connections.
 * Rich label editor. Label saving, import/export.
 * Print preview. You can see how your label will look like after post-processing. Several post-processing algorithms are available.
@@ -144,6 +144,10 @@ Skip steps you have done.
     ```bash
     npm run dev
     ```
+
+### Optional shared label storage
+
+Use **Storage settings** in the web app to choose browser storage or a user-configured remote library. The optional [Python + SQLite service](server/README.md) supports sharing saved labels between a phone and computer, with token-based user isolation and revision checks. A [Docker Compose LAN deployment guide (中文)](server/README.zh-CN.md) includes setup and connection steps for both devices.
 
 ### Deployment
 
