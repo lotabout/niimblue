@@ -1,5 +1,7 @@
 # 2026.10.0
 
+* Synchronize per-user custom fonts through remote storage, with binary font files outside SQLite, automatic loading across devices and authenticated downloads.
+
 * Pace and serialize iOS BLE writes, back off and retry explicit bridge rate-limit rejections, and reduce print status polling traffic.
 
 * Combine tools and properties into collapsible tabs below the canvas on narrow screens and compact the mobile header.

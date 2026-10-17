@@ -83,7 +83,7 @@
     {#if userFontsFiltered.length > 0}
       <h6 class="dropdown-header">{$tr("params.text.user_fonts")}</h6>
       {#each userFontsFiltered as family (family)}
-        <button class="dropdown-item" style="font-family: {family}" type="button" onclick={() => fontClick(family)}>
+        <button class="dropdown-item" style:font-family={family} type="button" onclick={() => fontClick(family)}>
           {family}
         </button>
       {/each}
@@ -92,7 +92,7 @@
     {#if systemFontsFiltered.length > 0}
       <h6 class="dropdown-header">{$tr("params.text.system_fonts")}</h6>
       {#each systemFontsFiltered as family (family)}
-        <button class="dropdown-item" style="font-family: {family}" type="button" onclick={() => fontClick(family)}>
+        <button class="dropdown-item" style:font-family={family} type="button" onclick={() => fontClick(family)}>
           {family}
         </button>
       {/each}

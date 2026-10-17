@@ -97,32 +97,25 @@ function decodeLabel(value: unknown): StoredLabel {
   return { ...parsed.data.data, id: parsed.data.id, storageRevision: parsed.data.revision };
 }
 
-export function createLabelStorage(config = get(storageConfig)): LabelStorage {
-  if (config.mode === "local") {
-    return {
-      list: async () => LocalStoragePersistence.loadLabels(),
-      load: async (id) => LocalStoragePersistence.loadLabel(id),
-      save: async (label, id) => LocalStoragePersistence.saveLabel(label, id),
-      delete: async (id) => LocalStoragePersistence.deleteLabel(id),
-      import: async (labels) => {
-        const { zodErrors, otherErrors } = LocalStoragePersistence.appendLabels(labels);
-        if (zodErrors.length || otherErrors.length) throw zodErrors[0] ?? otherErrors[0];
-      },
-      test: async () => undefined,
-    };
-  }
+export function createRemoteRequest(config: StorageConfig) {
   const remote = normalizeStorageConfig(config);
-  const request = async (path: string, method = "GET", body?: unknown): Promise<unknown> => {
+  return async (
+    path: string,
+    method = "GET",
+    body?: unknown,
+    options: { binary?: boolean; headers?: Record<string, string> } = {},
+  ): Promise<unknown> => {
     let response: Response;
     try {
       response = await fetch(`${remote.url}/api/v1${path}`, {
         method,
         headers: {
           Authorization: `Bearer ${remote.token}`,
-          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(body === undefined ? {} : { "Content-Type": body instanceof Blob ? body.type : "application/json" }),
+          ...options.headers,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(20000),
+        body: body === undefined ? undefined : body instanceof Blob ? body : JSON.stringify(body),
+        signal: AbortSignal.timeout(options.binary || body instanceof Blob ? 120000 : 20000),
         redirect: "error",
         cache: "no-store",
         credentials: "omit",
@@ -138,16 +131,35 @@ export function createLabelStorage(config = get(storageConfig)): LabelStorage {
             ? "conflict"
             : response.status === 404
               ? "missing"
-              : "connection",
+              : response.status === 400 || response.status === 413 || response.status === 415
+                ? "invalid"
+                : "connection",
       );
     }
     if (response.status === 204) return;
     try {
-      return await response.json();
+      return options.binary ? await response.arrayBuffer() : await response.json();
     } catch {
       throw new StorageError("invalid");
     }
   };
+}
+
+export function createLabelStorage(config = get(storageConfig)): LabelStorage {
+  if (config.mode === "local") {
+    return {
+      list: async () => LocalStoragePersistence.loadLabels(),
+      load: async (id) => LocalStoragePersistence.loadLabel(id),
+      save: async (label, id) => LocalStoragePersistence.saveLabel(label, id),
+      delete: async (id) => LocalStoragePersistence.deleteLabel(id),
+      import: async (labels) => {
+        const { zodErrors, otherErrors } = LocalStoragePersistence.appendLabels(labels);
+        if (zodErrors.length || otherErrors.length) throw zodErrors[0] ?? otherErrors[0];
+      },
+      test: async () => undefined,
+    };
+  }
+  const request = createRemoteRequest(config);
   return {
     list: async () => {
       const data = await request("/labels");

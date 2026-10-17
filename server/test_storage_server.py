@@ -1,4 +1,6 @@
 import copy
+import gzip
+import os
 import http.client
 import json
 import sqlite3
@@ -6,8 +8,10 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib.parse import quote
+from unittest.mock import patch
 
-from storage_server import StorageServer, configured_users
+from storage_server import StorageServer, configured_users, MAX_FONT_BYTES
 
 TOKEN = "test-token-for-niimblue-storage-123456"
 ORIGIN = "https://labels.example.com"
@@ -42,17 +46,18 @@ class StorageAPITest(unittest.TestCase):
         self.stop_server()
         self.temp.cleanup()
 
-    def request(self, method, path="/labels", body=None, token=TOKEN, origin=ORIGIN):
+    def request(self, method, path="/labels", body=None, token=TOKEN, origin=ORIGIN, extra_headers=None):
         client = http.client.HTTPConnection(*self.server.server_address, timeout=5)
         headers = {"Content-Type": "application/json"}
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         if origin is not None:
             headers["Origin"] = origin
-        client.request(method, "/api/v1" + path, body=json.dumps(body) if body is not None else None, headers=headers)
+        headers.update(extra_headers or {})
+        client.request(method, "/api/v1" + path, body=body if isinstance(body, bytes) else json.dumps(body) if body is not None else None, headers=headers)
         response = client.getresponse()
         payload = response.read()
-        result = response.status, json.loads(payload) if payload else None, dict(response.getheaders())
+        result = response.status, (payload if response.getheader("Content-Type") == "application/gzip" else json.loads(payload)) if payload else None, dict(response.getheaders())
         client.close()
         return result
 
@@ -60,6 +65,109 @@ class StorageAPITest(unittest.TestCase):
         status, saved, _ = self.request("POST", body={"data": data or label()})
         self.assertEqual(status, 201)
         return saved
+
+    def upload_font(self, family="测试字体", token=TOKEN, raw=None, mime="text/ttf"):
+        compressed = gzip.compress(raw if raw is not None else b"\x00\x01\x00\x00" + b"font fixture" * 20)
+        result = self.request("POST", "/fonts", compressed, token=token, extra_headers={
+            "Content-Type": "application/gzip", "X-Font-Family": quote(family), "X-Font-Type": mime,
+        })
+        return result, compressed
+
+    def test_fonts_use_binary_files_with_small_sqlite_metadata_and_survive_restart(self):
+        # Incompressible data exercises a real multi-megabyte request and response.
+        raw = b"\x00\x01\x00\x00" + os.urandom(12 * 1024 * 1024)
+        (status, saved, _), compressed = self.upload_font(raw=raw)
+        self.assertEqual(status, 201)
+        self.assertEqual(saved["family"], "测试字体")
+        file_path = self.server.font_dir / (saved["id"] + ".gz")
+        self.assertEqual(file_path.read_bytes(), compressed)
+        with self.server.connect() as db:
+            self.assertEqual({row["name"] for row in db.execute("PRAGMA table_info(fonts)")}, {"id", "owner_id", "family", "mime_type"})
+            self.assertLess(db.execute("PRAGMA page_count").fetchone()[0] * db.execute("PRAGMA page_size").fetchone()[0], 1024 * 1024)
+        self.assertEqual(self.request("GET", "/fonts")[1], [saved])
+        self.stop_server()
+        self.start_server()
+        status, downloaded, headers = self.request("GET", "/fonts/" + saved["id"])
+        self.assertEqual((status, downloaded), (200, compressed))
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(self.request("DELETE", "/fonts/" + saved["id"])[0], 204)
+        self.assertFalse(file_path.exists())
+        self.assertEqual(self.request("GET", "/fonts")[1], [])
+        self.assertEqual(self.request("GET", "/fonts/" + saved["id"])[0], 404)
+
+    def test_font_list_download_and_delete_are_authenticated_and_user_scoped(self):
+        (status, alice, _), compressed = self.upload_font(token=ALICE_TOKEN)
+        self.assertEqual(status, 201)
+        self.assertEqual(self.upload_font(token=BOB_TOKEN)[0][0], 201)
+        self.assertEqual(self.request("GET", "/fonts", token=TOKEN)[1], [])
+        self.assertEqual(self.request("GET", "/fonts", token=ALICE_TOKEN)[1], [alice])
+        path = "/fonts/" + alice["id"]
+        for token in (None, "wrong"):
+            for method in ("GET", "DELETE"):
+                self.assertEqual(self.request(method, path, token=token)[0], 401)
+            self.assertEqual(self.request("GET", "/fonts", token=token)[0], 401)
+        for token in (BOB_TOKEN, TOKEN):
+            for method in ("GET", "DELETE"):
+                self.assertEqual(self.request(method, path, token=token)[0], 404)
+        self.assertEqual(self.request("GET", path, token=ALICE_TOKEN)[1], compressed)
+        self.assertEqual(self.request("GET", path, token=ALICE_TOKEN, origin="https://untrusted.example")[0], 403)
+        self.assertEqual(self.request("OPTIONS", "/fonts", token=None)[2]["Access-Control-Allow-Headers"], "Authorization, Content-Type, X-Font-Family, X-Font-Type")
+
+    def test_font_urls_cannot_download_arbitrary_files_or_follow_symlinks(self):
+        secret = Path(self.temp.name) / "secret.txt"
+        secret.write_bytes(b"private file never downloadable")
+        for path in ("/fonts/../secret.txt", "/fonts/%2e%2e/secret.txt", "/fonts/%2e%2e%2fsecret.txt", "/fonts/..%5csecret.txt", "/fonts//etc/passwd", "/fonts/" + str(secret), "/fonts/" + "-" * 36, "/fonts/00000000-0000-0000-0000-000000000000.gz", "/files/secret.txt"):
+            status, payload, _ = self.request("GET", path)
+            self.assertEqual(status, 404, path)
+            self.assertNotIn("private file", repr(payload))
+        (_, saved, _), _ = self.upload_font()
+        path = "/fonts/" + saved["id"]
+        font_path = self.server.font_dir / (saved["id"] + ".gz")
+        font_path.unlink()
+        font_path.symlink_to(secret)
+        self.assertEqual(self.request("GET", path)[0], 404)
+        self.assertEqual(self.request("GET", path + "?file=" + str(secret))[0], 404)
+        self.assertEqual(secret.read_bytes(), b"private file never downloadable")
+
+    def test_fonts_reject_invalid_compression_formats_names_and_oversized_data(self):
+        for family in ("", " ", "a" * 201, "bad\nname"):
+            self.assertEqual(self.upload_font(family=family)[0][0], 400)
+        self.assertEqual(self.upload_font(mime="text/html")[0][0], 400)
+        self.assertEqual(self.upload_font(raw=b"<html>not a font</html>")[0][0], 400)
+        self.assertEqual(self.upload_font(mime="text/woff2")[0][0], 400)
+        self.assertEqual(self.upload_font(mime="font/woff2", raw=b"wOF2" + b"x" * 20)[0][0], 201)
+        headers = {"Content-Type": "application/gzip", "X-Font-Family": "Bad", "X-Font-Type": "text/ttf"}
+        for body in (b"not gzip", gzip.compress(b"\x00\x01\x00\x00" + b"x" * 20)[:-1], gzip.compress(b"\x00\x01\x00\x00" + b"x" * 20) + b"trailing"):
+            self.assertEqual(self.request("POST", "/fonts", body, extra_headers=headers)[0], 400)
+        with patch("storage_server.MAX_FONT_BYTES", 1024):
+            self.assertEqual(self.upload_font(raw=b"\x00\x01\x00\x00" + b"x" * 1025)[0][0], 413)
+        client = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        client.request("POST", "/api/v1/fonts", headers={**headers, "Authorization": "Bearer " + TOKEN, "Content-Length": str(MAX_FONT_BYTES + 65537)})
+        response = client.getresponse()
+        self.assertEqual(response.status, 413)
+        response.read()
+        client.close()
+
+    def test_simultaneous_same_name_font_uploads_do_not_overwrite_or_leave_files(self):
+        statuses = []
+        barrier = threading.Barrier(2)
+        def upload():
+            barrier.wait()
+            statuses.append(self.upload_font()[0][0])
+        workers = [threading.Thread(target=upload) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+        self.assertEqual(sorted(statuses), [201, 409])
+        self.assertEqual(len(list(self.server.font_dir.iterdir())), 1)
+        saved = self.request("GET", "/fonts")[1][0]
+        self.request("DELETE", "/fonts/" + saved["id"])
+        replacement = self.upload_font()[0][1]
+        self.assertNotEqual(saved["id"], replacement["id"])
+        self.assertEqual(self.request("DELETE", "/fonts/" + saved["id"])[0], 404)
+        self.assertEqual(self.request("GET", "/fonts/" + replacement["id"])[0], 200)
 
     def test_auth_cors_and_health(self):
         self.assertEqual(self.request("GET", token=None)[0], 401)

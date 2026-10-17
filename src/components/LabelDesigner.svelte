@@ -628,6 +628,8 @@
   const renderOnFontsChanged = () => {
     fabricCanvas?.forEachObject((o) => {
       if (o instanceof fabric.Textbox) {
+        o.initDimensions();
+        o.setCoords();
         o.dirty = true;
       }
     });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fontLibrary } from "$/stores/fonts";
   import { onMount } from "svelte";
   import { derived } from "svelte/store";
   import { connectedPrinterName, connectionState, printerClient, printerMeta } from "$/stores/app";
@@ -304,6 +305,7 @@
   };
 
   const generatePreviewData = async (page: number): Promise<void> => {
+    await fontLibrary.ready();
     const fabricTempCanvas = new CustomCanvas(undefined, {
       width: labelProps.size.width,
       height: labelProps.size.height,

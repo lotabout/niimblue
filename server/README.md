@@ -111,30 +111,44 @@ docker run --rm -p 127.0.0.1:8787:8787 \
   -v niimblue-storage:/data niimblue-storage
 ```
 
-The named volume preserves the database across container restarts. Back up the SQLite database using SQLite's backup API, or stop the service before copying the entire data directory. Do not copy only the main database file while the service is running in WAL mode.
+The named volume preserves the database across container restarts. Stop the service and back up the entire data directory, including `labels.sqlite3`, any WAL files and `fonts/`. A database-only backup does not include font files. Do not copy only the main database file while the service is running in WAL mode.
 
 ## Template independence
 
-Saved labels contain their full label properties (size, shape, direction, density, offsets, etc.), canvas objects and optional CSV. They do not refer to a preset/template ID. A device can open and edit a saved remote label even if the preset used to create it is absent locally, and later modifying or deleting that preset does not change the saved label. Missing presets affect creating new labels from those presets. Custom fonts are a separate dependency: import them on each device to keep rendering consistent.
+Saved labels contain their full label properties (size, shape, direction, density, offsets, etc.), canvas objects and optional CSV. They do not refer to a preset/template ID. A device can open and edit a saved remote label even if the preset used to create it is absent locally, and later modifying or deleting that preset does not change the saved label. Missing presets affect creating new labels from those presets. Custom fonts use the selected storage provider. With remote storage, devices using the same service URL and token automatically load the same font library.
 
 ## Behavior and migration
 
 - Save, Save as, library listing, opening, deletion and JSON imports use the selected provider.
-- Other devices see saved changes by reopening or refreshing the library. Opening a label fetches its latest content. This is not simultaneous collaborative editing or automatic background synchronization.
+- Other devices see saved changes by reopening or refreshing the library. Opening a label fetches its latest content. Label content is not synchronized in the background; custom fonts are synchronized separately as described below.
 - Saves and deletions check revisions. An outdated device gets a conflict message instead of overwriting newer work. Use **Save as** to preserve the current version, or reopen the remote label to load the latest version.
 - Switching providers keeps both libraries and the current canvas. The current document loses its saved identity, so the next save creates a new label in the selected destination. Existing labels are never automatically moved or deleted.
 - To copy existing labels: open the source library, **Export → All saved labels → JSON file**, switch providers, then import that file in the destination. Imports create new IDs and do not overwrite existing labels. Reimporting the same file creates additional copies.
 - Remote failures do not silently switch to local storage. Edits remain on the canvas and the existing browser recovery draft continues to work offline, retaining the saved revision for conflict checks after reconnecting.
-- Label canvas data, embedded images, thumbnails and optional CSV data are stored remotely. Fonts, presets, default templates, recovery drafts and device settings remain local. Import custom fonts separately on each device.
+- Label canvas data, embedded images, thumbnails, optional CSV data and custom fonts use remote storage. Presets, default templates, recovery drafts and device settings remain local.
 - Each API request is limited to 20 MiB; a batch import accepts 1–1000 labels. Failed validation rolls back the entire import. Very large libraries may need smaller import batches.
+
+## Custom fonts
+
+Update both the frontend and storage server to use remote fonts. In remote mode, adding or deleting a font affects only the authenticated user's font library. Other devices load that library on startup, when returning to the page or reconnecting, and every 30 seconds while the page is visible. Checks fetch metadata; each new immutable font ID is downloaded once per page session. Font files are held in browser memory, avoiding localStorage's small quota. A full page reload downloads the library again. Failed synchronization displays a warning and retries; an already loaded library remains usable until switching users or storage.
+
+Existing local fonts are preserved separately. Open **Custom fonts → Upload local fonts** after switching to remote storage to copy them to the current user. Same-name remote fonts are kept; choose a different display name to upload another font under that name. Deletions affect all connected devices. System fonts are not uploaded.
+
+Fonts are stored as binary gzip files at `<database-directory>/fonts/<server-generated-uuid>.gz`; SQLite stores only ID, user ownership, family and MIME type. Both upload and download use binary gzip, without Base64 on the wire or in SQLite. TTF and WOFF2 files up to 32 MiB before gzip compression are supported. Uploaded gzip is bounded during decompression and checked for its font signature. This is separate from the 20 MiB JSON limit for labels.
+
+The existing `/data` volume includes the font directory; Compose volume changes are unnecessary. Back up and restore the whole directory with the service stopped. Do not expose `fonts/` as a static web directory. Downloads require a bearer token and a matching owner in SQLite before opening a file. The API accepts only canonical UUID font IDs, never paths or filenames, and refuses symbolic links and non-regular files. CORS alone is not access control.
 
 ## API
 
-All paths start with `/api/v1`; use `Authorization: Bearer <user-token>`. User identity is derived from that token; clients cannot select an owner in request bodies. JSON request bodies require `Content-Type: application/json`.
+All paths start with `/api/v1`; use `Authorization: Bearer <user-token>`. User identity is derived from that token; clients cannot select an owner in request bodies. JSON label request bodies require `Content-Type: application/json`; font uploads use `application/gzip`.
 
 | Method | Path | Body / response |
 | --- | --- | --- |
 | GET | `/health` | `{ "apiVersion": 1, "storage": "sqlite", "userId": "<authenticated-user>" }` |
+| GET | `/fonts` | Font metadata: `[{ "id": "<uuid>", "family": "Name", "mimeType": "text/ttf" }]` |
+| POST | `/fonts` | Binary gzip body (`Content-Type: application/gzip`), percent-encoded UTF-8 `X-Font-Family` and `X-Font-Type` (`text/ttf` or `text/woff2`) → new metadata; duplicate family returns 409 |
+| GET | `/fonts/:id` | Binary gzip file, authenticated owner only |
+| DELETE | `/fonts/:id` | Delete the authenticated user's metadata and file; immutable IDs prevent stale deletes affecting replacements |
 | GET | `/labels` | List of stored label envelopes |
 | POST | `/labels` | `{ "data": <label JSON> }` → new envelope |
 | GET | `/labels/:id` | Stored label envelope |

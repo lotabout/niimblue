@@ -5,15 +5,20 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
+import stat
 import time
 import uuid
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 MAX_BODY = 20 * 1024 * 1024
 LABEL_PATH = re.compile(r"^/api/v1/labels/([a-f0-9-]{36})$")
+FONT_PATH = re.compile(r"^/api/v1/fonts/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$")
+MAX_FONT_BYTES = 32 * 1024 * 1024
 USER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
@@ -109,6 +114,26 @@ def valid_revision(body):
     return revision
 
 
+def validate_font(family, mime, compressed):
+    if not family.strip() or len(family) > 200 or any(ord(c) < 32 for c in family):
+        raise APIError(400, "Invalid font family")
+    if mime not in ("text/ttf", "text/woff2", "font/ttf", "font/woff2"):
+        raise APIError(400, "Use a gzip-compressed TTF or WOFF2 font")
+    try:
+        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        raw = decoder.decompress(compressed, MAX_FONT_BYTES + 1)
+        if len(raw) > MAX_FONT_BYTES:
+            raise APIError(413, "Font exceeds 32 MiB after decompression")
+        if not decoder.eof or decoder.unused_data:
+            raise ValueError("Incomplete gzip or trailing data")
+    except (ValueError, zlib.error):
+        raise APIError(400, "Invalid compressed font") from None
+    expected = b"wOF2" if mime.endswith("woff2") else b"\x00\x01\x00\x00"
+    if len(raw) < 12 or raw[:4] != expected:
+        raise APIError(400, "Font format does not match its MIME type")
+    return family.strip()
+
+
 class StorageServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -116,6 +141,9 @@ class StorageServer(ThreadingHTTPServer):
         self.token_hashes = configured_users(token, users)
         self.db_path = str(db_path)
         self.origins = set(origins)
+        self.font_dir = Path(self.db_path).parent / "fonts"
+        self.font_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.font_dir = self.font_dir.resolve()
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -125,6 +153,7 @@ class StorageServer(ThreadingHTTPServer):
             if "owner_id" not in columns:
                 db.execute("ALTER TABLE labels ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'default'")
             db.execute("CREATE INDEX IF NOT EXISTS labels_owner ON labels(owner_id)")
+            db.execute("CREATE TABLE IF NOT EXISTS fonts (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, family TEXT NOT NULL, mime_type TEXT NOT NULL, UNIQUE(owner_id, family))")
         super().__init__(address, Handler)
 
     @contextmanager
@@ -148,30 +177,62 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, status, payload=None):
         data = b"" if payload is None else json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        self.send_bytes(status, data, "application/json; charset=utf-8")
+
+    def send_bytes(self, status, data, content_type):
+        self.send_headers(status, len(data), content_type)
+        if data:
+            self.wfile.write(data)
+
+    def send_headers(self, status, length, content_type):
         self.send_response(status)
         origin = self.headers.get("Origin")
         if origin in self.server.origins:
             self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Font-Family, X-Font-Type")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
         self.end_headers()
-        if data:
-            self.wfile.write(data)
 
-    def read_json(self):
-        if self.headers.get_content_type() != "application/json":
-            raise APIError(415, "Use application/json")
+    def send_font(self, font_id):
+        # font_id is matched against FONT_PATH and its ownership was checked in
+        # SQLite before reaching this function. No URL-supplied filesystem paths.
+        path = self.server.font_dir / (font_id + ".gz")
+        if path.is_symlink():
+            raise APIError(404, "Font file is unavailable")
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        except OSError:
+            raise APIError(404, "Font file is unavailable") from None
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FONT_BYTES + 65536:
+                raise APIError(404, "Font file is unavailable")
+            self.send_headers(200, info.st_size, "application/gzip")
+            shutil.copyfileobj(source, self.wfile, length=65536)
+
+    def read_body(self, max_length):
+        if self.headers.get("Transfer-Encoding"):
+            raise APIError(400, "Use Content-Length")
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             raise APIError(400, "Invalid content length") from None
-        if not 0 < length <= MAX_BODY:
-            raise APIError(413, "Request body must be between 1 byte and 20 MiB")
+        if not 0 < length <= max_length:
+            raise APIError(413, "Request body is empty or too large")
+        body = self.rfile.read(length)
+        if len(body) != length:
+            raise APIError(400, "Incomplete body")
+        return body
+
+    def read_json(self):
+        if self.headers.get_content_type() != "application/json":
+            raise APIError(415, "Use application/json")
+        raw = self.read_body(MAX_BODY)
         try:
             def invalid_constant(value):
                 raise ValueError(value)
@@ -180,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not math.isfinite(number):
                     raise ValueError(value)
                 return number
-            body = json.loads(self.rfile.read(length), parse_constant=invalid_constant, parse_float=finite_float)
+            body = json.loads(raw, parse_constant=invalid_constant, parse_float=finite_float)
         except (ValueError, UnicodeError):
             raise APIError(400, "Invalid JSON") from None
         if not isinstance(body, dict):
@@ -212,6 +273,58 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"apiVersion": 1, "storage": "sqlite", "userId": user_id})
                 return
             with self.server.connect() as db:
+                if path == "/api/v1/fonts":
+                    if self.command == "GET":
+                        # Poll metadata only; font bytes are downloaded once per immutable ID.
+                        self.send_json(200, [{"id": row["id"], "family": row["family"], "mimeType": row["mime_type"]} for row in db.execute("SELECT id, family, mime_type FROM fonts WHERE owner_id = ? ORDER BY family", (user_id,))])
+                        return
+                    if self.command == "POST":
+                        if self.headers.get_content_type() != "application/gzip":
+                            raise APIError(415, "Use application/gzip")
+                        compressed = self.read_body(MAX_FONT_BYTES + 65536)
+                        family = unquote(self.headers.get("X-Font-Family", ""), errors="strict")
+                        mime = self.headers.get("X-Font-Type", "")
+                        family = validate_font(family, mime, compressed)
+                        font_id = str(uuid.uuid4())
+                        font_path = self.server.font_dir / (font_id + ".gz")
+                        created_file = False
+                        try:
+                            # Insert first to arbitrate concurrent same-name uploads. The
+                            # row is invisible until the complete file has been fsynced.
+                            db.execute("INSERT INTO fonts (id, owner_id, family, mime_type) VALUES (?, ?, ?, ?)", (font_id, user_id, family, mime))
+                            fd = os.open(font_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                            created_file = True
+                            with os.fdopen(fd, "wb") as output:
+                                output.write(compressed)
+                                output.flush()
+                                os.fsync(output.fileno())
+                            db.commit()
+                        except sqlite3.IntegrityError:
+                            if created_file:
+                                font_path.unlink(missing_ok=True)
+                            raise APIError(409, "A font with this family already exists") from None
+                        except (sqlite3.Error, OSError):
+                            if created_file:
+                                font_path.unlink(missing_ok=True)
+                            raise
+                        self.send_json(201, {"id": font_id, "family": family, "mimeType": mime})
+                        return
+                font_match = FONT_PATH.fullmatch(path)
+                if font_match:
+                    font_id = font_match[1]
+                    if self.command == "GET":
+                        row = db.execute("SELECT id FROM fonts WHERE id = ? AND owner_id = ?", (font_id, user_id)).fetchone()
+                        if row is None:
+                            raise APIError(404, "Font no longer exists")
+                        self.send_font(font_id)
+                        return
+                    if self.command == "DELETE":
+                        if not db.execute("DELETE FROM fonts WHERE id = ? AND owner_id = ?", (font_id, user_id)).rowcount:
+                            raise APIError(404, "Font no longer exists")
+                        db.commit()
+                        (self.server.font_dir / (font_id + ".gz")).unlink(missing_ok=True)
+                        self.send_json(204)
+                        return
                 if path == "/api/v1/labels":
                     if self.command == "GET":
                         self.send_json(200, [self.decode(row) for row in db.execute("SELECT * FROM labels WHERE owner_id = ? ORDER BY rowid DESC", (user_id,))])

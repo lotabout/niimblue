@@ -9,6 +9,7 @@
   import AppPrompt from "$/components/dialogs/AppPrompt.svelte";
   import { storageConfig } from "$/utils/label_storage";
   import { connectionState } from "$/stores/app";
+  import { fontLibrary, fontState } from "$/stores/fonts";
 
   // eslint-disable-next-line no-undef
   const appCommit = __APP_COMMIT__;
@@ -23,7 +24,20 @@
 </script>
 
 <div class="page-wrapper">
-  <div class="browser-warnings"><BrowserWarning /></div>
+  <div class="browser-warnings">
+    <BrowserWarning />
+    {#if $fontState.error}
+      <div class="alert alert-warning" role="alert">
+        {$tr("fonts.sync.failed")}
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          disabled={$fontState.loading}
+          onclick={() => fontLibrary.refresh()}>
+          {$tr("storage.refresh")}
+        </button>
+      </div>
+    {/if}
+  </div>
   <main class="app-main">
     <LabelDesigner>
       {#snippet brand()}

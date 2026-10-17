@@ -2,10 +2,8 @@ import { get, readable, writable } from "svelte/store";
 import {
   AppConfigSchema,
   CsvParamsSchema,
-  UserFontSchema,
   UserIconSchema,
   type CsvParams,
-  type UserFont,
   type UserIcon,
   type AppConfig,
   type AutomationProps,
@@ -26,15 +24,13 @@ import {
 import { LocalStoragePersistence, writablePersisted } from "$/utils/persistence";
 import { APP_CONFIG_DEFAULTS, CSV_DEFAULT, OBJECT_DEFAULTS_TEXT } from "$/defaults";
 import z from "zod";
-import { FileUtils } from "$/utils/file_utils";
 import { createPrinterInfo } from "@mmote/niimbluelib/dist/cjs/client/abstract_client";
 import { BluetoothClient } from "$/utils/bluetooth_client";
 
 export const fontCache = writable<string[]>([OBJECT_DEFAULTS_TEXT.fontFamily]);
 export const appConfig = writablePersisted<AppConfig>("config", AppConfigSchema, APP_CONFIG_DEFAULTS);
 export const userIcons = writablePersisted<UserIcon[]>("user_icons", z.array(UserIconSchema), []);
-export const userFonts = writablePersisted<UserFont[]>("user_fonts", z.array(UserFontSchema), []);
-export const loadedFonts = writable<FontFace[]>([]);
+export { userFonts, loadedFonts } from "$/stores/fonts";
 
 export const connectionState = writable<ConnectionState>("disconnected");
 export const connectedPrinterName = writable<string>("");
@@ -45,8 +41,6 @@ export const rfidInfo = writable<CombinedRfidInfo>({});
 export const printerMeta = writable<PrinterModelMeta | undefined>();
 export const heartbeatFails = writable<number>(0);
 export const csvData = writablePersisted<CsvParams>("csv_params", CsvParamsSchema, { data: CSV_DEFAULT });
-
-userFonts.subscribe(FileUtils.loadFonts);
 
 export const automation = readable<AutomationProps | undefined>(
   (() => {

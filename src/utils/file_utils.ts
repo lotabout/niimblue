@@ -2,7 +2,6 @@ import * as fabric from "fabric";
 import {
   ExportedLabelTemplateSchema,
   LabelPresetSchema,
-  UserFont,
   type ExportedLabelTemplate,
   type FabricJson,
   type LabelPreset,
@@ -13,8 +12,9 @@ import { z } from "zod";
 import { CustomCanvas } from "$/fabric-object/custom_canvas";
 import { Capacitor } from "@capacitor/core";
 import { CanvasUtils } from "$/utils/canvas_utils";
-import { csvData, loadedFonts } from "$/stores/app";
+import { csvData } from "$/stores/app";
 import { get } from "svelte/store";
+import { fontLibrary } from "$/stores/fonts";
 
 export class FileUtils {
   static timestamp(): number {
@@ -307,6 +307,7 @@ export class FileUtils {
   }
 
   static async loadCanvasState(canvas: fabric.Canvas, state: FabricJson, signal?: AbortSignal): Promise<void> {
+    await fontLibrary.ready();
     const deprecatedLines: fabric.Line[] = [];
 
     await canvas.loadFromJSON(
@@ -457,41 +458,5 @@ export class FileUtils {
     const decoded = decoder.decode(decompressed);
     const labelObj = JSON.parse(decoded);
     return ExportedLabelTemplateSchema.parse(labelObj);
-  }
-
-  static async loadFonts(fontsToLoad: UserFont[]) {
-    const loadedList = get(loadedFonts);
-
-    for (const font of fontsToLoad) {
-      if (loadedList.some((e) => e.family === font.family)) {
-        continue;
-      }
-
-      const bytes = FileUtils.base64toBytes(font.gzippedDataB64);
-      const decompressed = await FileUtils.decompressData(bytes);
-      const b64 = await FileUtils.base64buf(decompressed);
-
-      const fontFace = new FontFace(font.family, `url(data:${font.mimeType};base64,${b64})`);
-
-      try {
-        const loaded = await fontFace.load();
-        loadedList.push(loaded);
-        document.fonts.add(loaded);
-      } catch (e) {
-        console.error(`Failed to load font ${font.family}:`, e);
-      }
-    }
-
-    // remove font that not exist anymore
-    for (let i = loadedList.length - 1; i >= 0; i--) {
-      const loadedFont = loadedList[i];
-
-      if (!fontsToLoad.some((e) => e.family === loadedFont.family)) {
-        document.fonts.delete(loadedFont);
-        loadedList.splice(i, 1);
-      }
-    }
-
-    loadedFonts.set(loadedList);
   }
 }
