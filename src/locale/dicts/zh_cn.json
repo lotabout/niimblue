@@ -226,6 +226,8 @@
     "workspace.draft.restored": "已恢复上次未完成的标签",
     "workspace.draft.failed": "草稿保留失败，请保存或导出标签。",
     "workspace.insert": "添加内容",
+    "workspace.tools": "工具",
+    "workspace.panels": "工作区面板",
     "workspace.more": "更多",
     "workspace.properties": "属性",
     "workspace.label": "标签设置",

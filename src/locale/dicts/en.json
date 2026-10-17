@@ -264,6 +264,8 @@
     "workspace.draft.restored": "Your unfinished label has been restored",
     "workspace.draft.failed": "Could not keep the recovery draft. Save or export your label.",
     "workspace.insert": "Insert",
+    "workspace.tools": "Tools",
+    "workspace.panels": "Workspace panels",
     "workspace.more": "More",
     "workspace.properties": "Properties",
     "workspace.label": "Label settings",

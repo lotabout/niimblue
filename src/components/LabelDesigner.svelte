@@ -78,7 +78,10 @@
   }
 
   let { brand, device, status, workspaceSettings }: Props = $props();
-  let inspectorOpen = $state(false);
+  let mobilePanel = $state<"tools" | "properties" | null>("tools");
+  const toggleMobilePanel = (panel: "tools" | "properties") => {
+    mobilePanel = mobilePanel === panel ? null : panel;
+  };
   let htmlCanvas: HTMLCanvasElement;
   let currentDialog = $state<DialogName>("none");
 
@@ -110,6 +113,21 @@
     void editRevision;
     return selectedObject instanceof fabric.IText ? selectedObject.text : "";
   });
+  const saveStatusText = $derived(
+    draftSaveFailed
+      ? $tr("workspace.draft.failed")
+      : !documentState.id
+        ? $tr("workspace.never_saved")
+        : hasUnsavedChanges
+          ? $tr("workspace.unsaved")
+          : $tr(
+              savingDocument
+                ? "storage.saving"
+                : $storageConfig.mode === "remote"
+                  ? "storage.saved.remote"
+                  : "workspace.saved",
+            ),
+  );
   const insertTools: { type: OjectType; icon: MaterialIcon }[] = [
     { type: "text", icon: "title" },
     { type: "image", icon: "image" },
@@ -253,8 +271,8 @@
 
     // Esc
     if (key === "escape") {
-      if (inspectorOpen) {
-        inspectorOpen = false;
+      if (mobilePanel && window.matchMedia("(max-width: 850px)").matches) {
+        mobilePanel = null;
         return;
       }
       discardSelection();
@@ -455,6 +473,7 @@
     }
     if (obj !== undefined) {
       fabricCanvas!.setActiveObject(obj);
+      mobilePanel = "properties";
       pushUndo();
     }
   };
@@ -816,38 +835,32 @@
         class="save-status"
         class:has-changes={hasUnsavedChanges || !documentState.id}
         class:text-danger={draftSaveFailed}
+        title={saveStatusText}
+        aria-label={saveStatusText}
         role="status">
         <span></span>
-        {draftSaveFailed
-          ? $tr("workspace.draft.failed")
-          : !documentState.id
-            ? $tr("workspace.never_saved")
-            : hasUnsavedChanges
-              ? $tr("workspace.unsaved")
-              : $tr(
-                  savingDocument
-                    ? "storage.saving"
-                    : $storageConfig.mode === "remote"
-                      ? "storage.saved.remote"
-                      : "workspace.saved",
-                )}
+        <span class="save-status-label">{saveStatusText}</span>
       </span>
     </div>
     <div class="document-actions">
       <button
         class="btn studio-quiet library-button"
+        aria-label={$tr("workspace.library")}
+        title={$tr("workspace.library")}
         disabled={savingDocument || loadingDocument}
         onclick={() => (currentDialog = "saved_labels")}>
         <MdIcon icon="folder_open" />
-        {$tr("workspace.library")}
+        <span class="document-action-label">{$tr("workspace.library")}</span>
       </button>
       <div class="btn-group document-save">
         <button
           class="btn studio-secondary"
+          aria-label={$tr("workspace.save")}
+          title={$tr("workspace.save")}
           onclick={() => requestSave()}
           disabled={!documentReady || loadingDocument || savingDocument}>
           <MdIcon icon="save" />
-          {$tr("workspace.save")}
+          <span class="document-action-label">{$tr("workspace.save")}</span>
         </button>
         <button
           class="btn studio-secondary dropdown-toggle dropdown-toggle-split"
@@ -861,23 +874,31 @@
         </ul>
       </div>
       <span class="action-divider"></span>
-      <button class="btn studio-secondary" onclick={openPreview}>
+      <button
+        class="btn studio-secondary"
+        onclick={openPreview}
+        aria-label={$tr("editor.preview")}
+        title={$tr("editor.preview")}>
         <MdIcon icon="visibility" />
-        {$tr("editor.preview")}
+        <span class="document-action-label">{$tr("editor.preview")}</span>
       </button>
       <button
         class="btn studio-primary"
+        aria-label={$tr("editor.print")}
         onclick={$connectionState === "connected" ? openPreviewAndPrint : openPreview}
         title={$connectionState === "connected" ? $tr("workspace.quickprint") : $tr("workspace.preview.connect")}>
         <MdIcon icon="print" />
-        {$tr("editor.print")}
+        <span class="document-action-label">{$tr("editor.print")}</span>
       </button>
     </div>
     <div class="device-controls">{@render device()}</div>
   </div>
 
-  <div class="workspace-layout">
-    <nav class="insert-rail" aria-label={$tr("workspace.insert")}>
+  <div
+    class="workspace-layout"
+    class:show-tools={mobilePanel === "tools"}
+    class:show-properties={mobilePanel === "properties"}>
+    <nav id="workspace-tools" class="insert-rail" aria-label={$tr("workspace.insert")}>
       <div class="rail-heading">{$tr("workspace.insert")}</div>
       {#each insertTools as tool (tool.type)}
         <button
@@ -911,14 +932,6 @@
           <MdIcon icon="expand_more" />
         </button>
         <div class="canvas-actions">
-          <button
-            class="btn studio-quiet properties-toggle"
-            class:active={inspectorOpen}
-            onclick={() => (inspectorOpen = !inspectorOpen)}
-            aria-controls="workspace-inspector"
-            aria-label={$tr("workspace.properties")}
-            title={$tr("workspace.properties")}
-            aria-expanded={inspectorOpen}><MdIcon icon="tune" /> <span>{$tr("workspace.properties")}</span></button>
           <button
             class="btn studio-quiet"
             disabled={undoState.undoDisabled}
@@ -978,26 +991,31 @@
       </div>
     </section>
 
-    {#if inspectorOpen}
+    <div class="dock-tabs" role="group" aria-label={$tr("workspace.panels")}>
       <button
-        class="inspector-backdrop"
-        onclick={() => (inspectorOpen = false)}
-        aria-label={$tr("workspace.properties.close")}></button>
-    {/if}
-    <aside
-      id="workspace-inspector"
-      class="inspector"
-      class:mobile-open={inspectorOpen}
-      aria-label={$tr("workspace.properties")}>
+        class:active={mobilePanel === "tools"}
+        onclick={() => toggleMobilePanel("tools")}
+        aria-controls="workspace-tools"
+        aria-expanded={mobilePanel === "tools"}>
+        <MdIcon icon="add_circle_outline" />
+        {$tr("workspace.tools")}
+        <MdIcon icon={mobilePanel === "tools" ? "expand_less" : "expand_more"} />
+      </button>
+      <button
+        class:active={mobilePanel === "properties"}
+        onclick={() => toggleMobilePanel("properties")}
+        aria-controls="workspace-inspector"
+        aria-expanded={mobilePanel === "properties"}>
+        <MdIcon icon="tune" />
+        {$tr("workspace.properties")}
+        <MdIcon icon={mobilePanel === "properties" ? "expand_less" : "expand_more"} />
+      </button>
+    </div>
+
+    <aside id="workspace-inspector" class="inspector" aria-label={$tr("workspace.properties")}>
       <div class="inspector-heading">
         <h3>{selectedCount ? $tr("workspace.properties") : $tr("workspace.label")}</h3>
-        <div class="inspector-heading-actions">
-          <span class="inspector-badge">{selectedCount ? selectedCount : "mm"}</span>
-          <button
-            class="btn studio-quiet inspector-close"
-            onclick={() => (inspectorOpen = false)}
-            aria-label={$tr("workspace.properties.close")}><MdIcon icon="close" /></button>
-        </div>
+        <span class="inspector-badge">{selectedCount ? selectedCount : "mm"}</span>
       </div>
       <div class="inspector-content">
         {#if selectedCount === 0}
@@ -1225,13 +1243,13 @@
     font-size: 10px;
     white-space: nowrap;
   }
-  .save-status > span {
+  .save-status > span:first-child {
     width: 5px;
     height: 5px;
     background: #8896ac;
     border-radius: 50%;
   }
-  .save-status.has-changes > span {
+  .save-status.has-changes > span:first-child {
     background: #e2bb77;
   }
   .document-actions,
@@ -1305,6 +1323,9 @@
     min-width: 0;
     overflow: hidden;
     background: #1e2128;
+  }
+  .dock-tabs {
+    display: none;
   }
   .insert-rail {
     min-height: 0;
@@ -1522,22 +1543,12 @@
     align-items: center;
     justify-content: space-between;
   }
-  .inspector-heading-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
   .inspector-content {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-  }
-  .inspector-close,
-  .properties-toggle,
-  .inspector-backdrop {
-    display: none;
   }
   h3 {
     margin: 0;
@@ -1717,141 +1728,168 @@
   }
   @media (max-width: 850px) {
     .image-editor {
-      grid-template-rows: 88px minmax(0, 1fr) 32px;
+      grid-template-rows: 64px minmax(0, 1fr) 32px;
     }
     .document-bar {
       grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-rows: 40px 40px;
-      padding: 4px 12px;
-      gap: 0 10px;
+      grid-template-rows: 28px 28px;
+      padding: 4px 8px;
+      gap: 0 8px;
     }
     .document-info {
       grid-column: 1;
       grid-row: 1;
-    }
-    .document-actions {
-      grid-column: 1 / -1;
-      grid-row: 2;
-    }
-    .device-controls {
-      grid-column: 2;
-      grid-row: 1;
-    }
-    .save-status {
-      display: flex;
-    }
-    .workspace-layout {
-      grid-template-columns: 68px minmax(0, 1fr);
-    }
-    .properties-toggle {
-      display: inline-block;
-    }
-    .inspector {
-      display: none;
-      position: absolute;
-      right: 0;
-      top: 0;
-      bottom: 0;
-      width: min(320px, 88%);
-      z-index: 20;
-      box-shadow: -12px 0 36px #0005;
-    }
-    .inspector.mobile-open {
-      display: flex;
-    }
-    .inspector-close {
-      display: inline-block;
-      padding: 1px 4px;
-    }
-    .inspector-backdrop {
-      display: block;
-      position: absolute;
-      inset: 0;
-      border: 0;
-      background: #0005;
-      z-index: 19;
-    }
-  }
-  @media (max-width: 600px) {
-    .image-editor {
-      grid-template-rows: 116px minmax(0, 1fr) 32px;
-    }
-    .document-bar {
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-rows: 36px 36px 36px;
-      padding: 4px 10px;
-      gap: 0 8px;
-    }
-    .document-info {
-      grid-row: 1;
-      grid-column: 1 / -1;
+      gap: 6px;
     }
     .document-name {
       max-width: 140px;
+      font-size: 11px;
     }
     .save-status {
       display: flex;
-      margin-left: auto;
-      font-size: 9px;
     }
-    .device-controls {
-      grid-row: 2;
-      grid-column: 1 / -1;
-      padding-left: 0;
-      border: 0;
+    .save-status-label {
+      display: none;
     }
     .document-actions {
-      grid-row: 3;
       grid-column: 1 / -1;
-      width: 100%;
+      grid-row: 2;
       gap: 6px;
     }
     .document-actions > .btn,
-    .document-actions > .document-save {
-      flex: 1;
+    .document-save > .btn {
+      padding: 3px 8px;
       font-size: 11px;
-      padding: 6px 7px;
-    }
-    .document-actions .library-button {
-      display: inline-block;
+      line-height: 1.4;
     }
     .document-actions .action-divider {
       display: none;
     }
+    .device-controls {
+      grid-column: 2;
+      grid-row: 1;
+      padding-left: 0;
+      border: 0;
+      min-width: 0;
+    }
     .workspace-layout {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 64px minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) 40px 0;
     }
-    .insert-rail {
-      flex-direction: row;
-      padding: 6px;
-      gap: 3px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      border-right: 0;
-      border-bottom: 1px solid var(--studio-border);
+    .workspace-layout.show-tools {
+      grid-template-rows: minmax(0, 1fr) 40px 64px;
+    }
+    .workspace-layout.show-properties {
+      grid-template-rows: minmax(0, 1fr) 40px min(40%, 320px);
+    }
+    .canvas-panel {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .canvas-toolbar {
+      height: 36px;
+      flex-basis: 36px;
+      padding: 3px 8px;
+    }
+    .dock-tabs {
+      display: flex;
+      grid-column: 1;
+      grid-row: 2;
+      border-top: 1px solid var(--studio-border);
+      background: #20232b;
+    }
+    .dock-tabs button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #9da8ba;
+      font-size: 12px;
+    }
+    .dock-tabs button.active {
+      color: #bdd5ff;
+      background: #29354a;
+      border-bottom-color: #86b3ff;
+    }
+    .dock-tabs button:focus-visible {
+      outline: 2px solid #8eb8ff;
+      outline-offset: -3px;
+    }
+    .insert-rail,
+    .inspector {
+      display: none;
+      grid-column: 1;
+      grid-row: 3;
+      border: 0;
+    }
+    .show-tools .insert-rail {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      grid-template-rows: minmax(0, 1fr);
+      padding: 6px 8px;
+      gap: 4px;
+    }
+    .show-properties .inspector {
+      display: flex;
     }
     .rail-heading,
     .rail-divider {
       display: none;
     }
     .insert-tool {
-      flex: 1 0 45px;
-      gap: 4px;
+      gap: 3px;
       padding: 4px 2px;
-      font-size: 9px;
+      font-size: 10px;
     }
     .insert-tool :global(.mdi) {
       font-size: 21px;
     }
-    .canvas-toolbar {
-      padding: 6px 8px;
+    .inspector-heading {
+      height: 30px;
+      flex-basis: 30px;
+      padding: 4px 12px;
+    }
+    .inspector-section {
+      padding: 12px;
+    }
+    .storage-note {
+      display: none;
+    }
+    .canvas-scroll {
+      padding: 40px 20px;
+    }
+  }
+  @media (max-width: 600px) {
+    .workspace-layout.show-tools {
+      grid-template-rows: minmax(0, 1fr) 40px 116px;
+    }
+    .show-tools .insert-rail {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+    }
+    .document-name {
+      max-width: 100px;
+    }
+    .document-actions > .btn,
+    .document-actions > .document-save {
+      flex: 1;
+    }
+    .document-actions .library-button {
+      display: inline-block;
+    }
+    .document-action-label {
+      display: none;
     }
     .canvas-actions {
       gap: 0;
     }
     .canvas-actions .btn {
-      padding: 4px 5px;
+      padding: 3px 5px;
       font-size: 11px;
     }
     .canvas-actions .action-divider {
@@ -1860,19 +1898,7 @@
     .size-button {
       gap: 3px;
       font-size: 10px;
-      padding: 5px;
-    }
-    .properties-toggle span {
-      display: none;
-    }
-    .canvas-scroll {
-      padding: 56px 20px;
-    }
-    .inspector {
-      top: 64px;
-    }
-    .inspector-backdrop {
-      top: 64px;
+      padding: 3px 5px;
     }
     .workspace-statusbar {
       padding: 0 8px;

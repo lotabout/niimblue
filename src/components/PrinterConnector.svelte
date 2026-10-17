@@ -251,14 +251,16 @@
       </div>
     </div>
 
-    <span class="input-group-text">
+    <span class="input-group-text printer-transport">
       {#if connectionType === "serial"}
         <MdIcon icon="usb" />
       {:else}
         <MdIcon icon="bluetooth" />
       {/if}
     </span>
-    <span class="input-group-text {$heartbeatFails > 0 ? 'text-warning' : ''}">
+    <span
+      class="input-group-text printer-model {$heartbeatFails > 0 ? 'text-warning' : ''}"
+      title={$printerMeta?.model ?? $connectedPrinterName}>
       {$printerMeta?.model ?? $connectedPrinterName}
     </span>
     <span class="input-group-text">
@@ -270,27 +272,33 @@
       <button
         disabled={$connectionState === "connecting"}
         class="btn text-nowrap {connectionType === 'bluetooth' ? 'btn-light' : 'btn-outline-secondary'}"
+        aria-label={$tr("connector.bluetooth")}
+        title={$tr("connector.bluetooth")}
         onclick={() => switchConnectionType("bluetooth")}>
         <MdIcon icon="bluetooth" />
-        {$tr("connector.bluetooth")}
+        <span class="transport-label">{$tr("connector.bluetooth")}</span>
       </button>
     {/if}
     {#if featureSupport.webSerial}
       <button
         disabled={$connectionState === "connecting"}
         class="btn text-nowrap {connectionType === 'serial' ? 'btn-light' : 'btn-outline-secondary'}"
+        aria-label={$tr("connector.serial")}
+        title={$tr("connector.serial")}
         onclick={() => switchConnectionType((connectionType = "serial"))}>
         <MdIcon icon="usb" />
-        {$tr("connector.serial")}
+        <span class="transport-label">{$tr("connector.serial")}</span>
       </button>
     {/if}
     {#if featureSupport.capacitorBle}
       <button
         disabled={$connectionState === "connecting"}
         class="btn text-nowrap {connectionType === 'capacitor-ble' ? 'btn-light' : 'btn-outline-secondary'}"
+        aria-label="Capacitor BLE"
+        title="Capacitor BLE"
         onclick={() => switchConnectionType((connectionType = "capacitor-ble"))}>
         <MdIcon icon="usb" />
-        Capacitor BLE
+        <span class="transport-label">Capacitor BLE</span>
       </button>
     {/if}
   {/if}
@@ -325,5 +333,28 @@
   .dropdown-menu {
     width: 100vw;
     max-width: 300px;
+  }
+  @media (max-width: 850px) {
+    .input-group > .btn,
+    .input-group > .input-group-text {
+      padding: 3px 5px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .transport-label {
+      display: none;
+    }
+    .input-group > .printer-transport {
+      display: none;
+    }
+    .input-group > .input-group-text {
+      max-width: 90px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .input-group > .printer-model {
+      max-width: 72px;
+    }
   }
 </style>
