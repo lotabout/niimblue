@@ -104,6 +104,7 @@ export const PreviewPropsSchema = z.object({
   speed: z.union([z.literal(0), z.literal(1)]).optional(),
   labelType: z.enum(LabelType).optional(),
   printTaskName: z.enum([firstTask, ...otherTasks]).optional(),
+  printSessionMode: z.enum(["auto", "per_page", "continuous"]).optional(),
   offset: PreviewPropsOffsetSchema.optional(),
 });
 

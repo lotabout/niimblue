@@ -4,6 +4,7 @@
 	"type": "module",
 	"version": "2026.9.0",
 	"scripts": {
+		"test": "node --experimental-strip-types --test tests/*.test.mjs",
 		"dev-check": "npm run sv-check && npm run dev",
 		"dev": "vite",
 		"dev-local-lib": "vite --force",

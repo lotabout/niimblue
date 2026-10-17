@@ -10,7 +10,6 @@
     printTaskNames,
     type PrintProgressEvent,
     type PrintTaskName,
-    AbstractPrintTask,
     PrintOptions,
     PageColorType,
     PrintPacketProgressEvent,
@@ -28,6 +27,7 @@
   import { CustomCanvas } from "$/fabric-object/custom_canvas";
   import { FileUtils } from "$/utils/file_utils";
   import AppModal from "$/components/basic/AppModal.svelte";
+  import { calculatePrintProgress, printPages } from "$/utils/print_job";
 
   interface Props {
     labelProps: LabelProps;
@@ -59,9 +59,8 @@
   let originalImage: ImageData;
   let previewContext: CanvasRenderingContext2D;
   let printTaskName = $state<PrintTaskName>("B1");
+  let printSessionMode = $state<NonNullable<PreviewProps["printSessionMode"]>>("auto");
   let labelType = $state<LabelType>(LabelType.WithGaps);
-  // eslint-disable-next-line no-undef
-  let statusTimer: NodeJS.Timeout | undefined = undefined;
   let error = $state<string>("");
   let detectedPrintTaskName: PrintTaskName | undefined = $printerClient?.getPrintTaskType();
   let csvParsed: DSVRowArray<string>;
@@ -69,7 +68,7 @@
   let pagesTotal = $state<number>(1);
   let offset = $state<PreviewPropsOffset>({ x: 0, y: 0, offsetType: "inner" });
   let offsetWarning = $state<string>("");
-  let currentPrintTask: AbstractPrintTask | undefined;
+  let printAbortController: AbortController | undefined;
   let savedProps = $state<PreviewProps>({});
   let modalRef: AppModal;
 
@@ -78,22 +77,8 @@
   const labelTypeTranslationKey = (labelType: string): TranslationKey =>
     `preview.label_type.${labelType}` as TranslationKey;
 
-  const endPrint = async () => {
-    clearInterval(statusTimer);
-
-    if (!$disconnected && printState !== "idle") {
-      if (currentPrintTask !== undefined) {
-        await currentPrintTask.printEnd();
-      } else {
-        console.warn("Print task undefined, falling back to PrintEnd command");
-        await $printerClient.protocol.printEnd();
-      }
-
-      $printerClient.startHeartbeat();
-    }
-
-    printState = "idle";
-    printProgress = { progressType: "send", percents: 0 };
+  const endPrint = () => {
+    printAbortController?.abort();
   };
 
   const onPrintOnSystemPrinter = async () => {
@@ -109,13 +94,23 @@
   };
 
   const onPrint = async () => {
+    if (printState !== "idle") return;
     printState = "printing";
     error = "";
+    const controller = new AbortController();
+    printAbortController = controller;
+    const client = $printerClient;
+    const taskName = printTaskName;
+    const copies = quantity;
+    const pageCount = pagesTotal;
+    const totalPages = pageCount * copies;
+    const singlePageSessions = printSessionMode === "per_page" || (printSessionMode === "auto" && taskName === "B1");
+    let completedPages = 0;
+    let sessionPages = totalPages;
 
-    $printerClient.stopHeartbeat();
+    client.stopHeartbeat();
 
     const opts: Partial<PrintOptions> = {
-      totalPages: pagesTotal * quantity,
       density,
       speed,
       labelType,
@@ -129,8 +124,7 @@
     }
 
     const printListener = (e: PrintProgressEvent) => {
-      const currentPageProgress = (e.pagePrintProgress + e.pageFeedProgress) / 2;
-      const percents = Math.min(100, Math.floor(((e.page + currentPageProgress / 100) / opts.totalPages!) * 100));
+      const percents = calculatePrintProgress(e, completedPages, sessionPages, totalPages);
       printProgress = { progressType: "print", percents };
     };
 
@@ -138,46 +132,43 @@
       printProgress = { progressType: "send", percents: e.progress };
     };
 
-    $printerClient.on("printprogress", printListener);
-    $printerClient.on("printpacketprogress", sendListener);
-
-    currentPrintTask = $printerClient.protocol.newPrintTask(printTaskName, opts);
+    client.on("printprogress", printListener);
+    client.on("printpacketprogress", sendListener);
 
     try {
-      await currentPrintTask.printInit();
-
-      for (let pageIdx = 0; pageIdx < pagesTotal; pageIdx++) {
-        currentPage = pageIdx;
-        console.log("Printing page", currentPage);
-        await generatePreviewData(currentPage);
-        const encoded: EncodedImage = ImageEncoder.encodeCanvas(
-          previewCanvas,
-          opts.pageColor!,
-          labelProps.printDirection,
-        );
-
-        await currentPrintTask.printPage(encoded, quantity);
-        await currentPrintTask.waitForPageFinished();
+      await printPages({
+        pageCount,
+        quantity: copies,
+        singlePageSessions,
+        signal: controller.signal,
+        createTask: (totalPages) => client.protocol.newPrintTask(taskName, { ...opts, totalPages }),
+        renderPage: async (pageIdx): Promise<EncodedImage> => {
+          currentPage = pageIdx;
+          console.log("Printing page", currentPage);
+          await generatePreviewData(currentPage);
+          return ImageEncoder.encodeCanvas(previewCanvas, opts.pageColor!, labelProps.printDirection);
+        },
+        onSessionStart: (completed, pages) => {
+          completedPages = completed;
+          sessionPages = pages;
+        },
+      });
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        error = `${e}`;
+        console.error(e);
       }
-      await currentPrintTask.waitForFinished();
-    } catch (e) {
-      error = `${e}`;
-      console.error(e);
+    } finally {
+      client.off("printprogress", printListener);
+      client.off("printpacketprogress", sendListener);
+      client.protocol.setDefaultPacketTimeout();
+      client.startHeartbeat();
+      printAbortController = undefined;
+      printState = "idle";
+      printProgress = { progressType: "send", percents: 0 };
     }
 
-    try {
-      await endPrint();
-    } catch (e) {
-      error = `${e}`;
-      console.error(e);
-    }
-
-    printState = "idle";
-    $printerClient.off("printprogress", printListener);
-    $printerClient.off("printpacketprogress", sendListener);
-    $printerClient.startHeartbeat();
-
-    if (printNow && !error) {
+    if (printNow && !error && !controller.signal.aborted) {
       modalRef.hide();
     }
   };
@@ -284,6 +275,7 @@
       if (saved.speed !== undefined) speed = saved.speed;
       if (saved.labelType !== undefined) labelType = saved.labelType;
       if (saved.printTaskName !== undefined) printTaskName = saved.printTaskName;
+      if (saved.printSessionMode !== undefined) printSessionMode = saved.printSessionMode;
       // copy so edits to the working offset never alias the saved object
       if (saved.offset !== undefined) offset = { ...saved.offset };
     } catch (e) {
@@ -662,6 +654,26 @@
     </div>
 
     <div class="input-group input-group-sm">
+      <label class="input-group-text" for="print-session-mode">{$tr("preview.session_mode")}</label>
+      <select
+        id="print-session-mode"
+        class="form-select"
+        disabled={printState !== "idle"}
+        bind:value={printSessionMode}
+        onchange={() => updateSavedProp("printSessionMode", printSessionMode)}>
+        <option value="auto">{$tr("preview.session_mode.auto")}</option>
+        <option value="per_page">{$tr("preview.session_mode.per_page")}</option>
+        <option value="continuous">{$tr("preview.session_mode.continuous")}</option>
+      </select>
+      <ParamLockButton
+        propName="printSessionMode"
+        value={printSessionMode}
+        savedValue={savedProps.printSessionMode}
+        onClick={toggleSavedProp} />
+    </div>
+    <div class="small text-body-secondary">{$tr("preview.session_mode.help")}</div>
+
+    <div class="input-group input-group-sm">
       <span class="input-group-text">{$tr("preview.offset")}</span>
       {#if offsetWarning}
         <span class="input-group-text text-warning" title={offsetWarning}><MdIcon icon="warning" /></span>
@@ -705,7 +717,15 @@
       <MdIcon icon="print" />
     </button>
 
-    <button type="button" class="btn btn-primary" disabled={$disconnected || printState !== "idle"} onclick={onPrint}>
+    <button
+      type="button"
+      class="btn btn-primary"
+      disabled={$disconnected ||
+        printState !== "idle" ||
+        pagesTotal < 1 ||
+        !Number.isSafeInteger(quantity) ||
+        quantity < 1}
+      onclick={onPrint}>
       {#if $disconnected}
         {$tr("preview.not_connected")}
       {:else}

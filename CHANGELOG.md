@@ -1,5 +1,6 @@
 # 2026.10.0
 
+* Fix B1 CSV batch printing compatibility by using separate sessions per page; add a batch printing mode selector.
 * Fix Arabic RTL text cursor and selection
 * Parse nested variables (example: `{dt+{var}d}`).
 * Auto use `D110M_V4` print task for `protocolVersion 4+` printers.
