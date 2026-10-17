@@ -66,7 +66,7 @@
   let hasSavedLabel = $state(false);
   let stageWidth = $state(0);
   let stageHeight = $state(0);
-  let autoFit = $state(true);
+  let autoFit = $state(false);
   let labelTitle = $state("");
   const dpmm = $derived(labelProps.dpmm ?? ($printerMeta?.dpi === 300 ? 11.81 : 8));
   const labelWidth = $derived(Number((labelProps.size.width / dpmm).toFixed(1)));
@@ -109,6 +109,22 @@
     selectedObject = undefined;
     selectedCount = 0;
     editRevision = 0;
+  };
+
+  const onCanvasBackgroundPointerDown = (event: PointerEvent) => {
+    if (
+      !fabricCanvas ||
+      event.button !== 0 ||
+      !(event.target instanceof Element) ||
+      event.target.closest(".canvas-wrapper")
+    ) {
+      return;
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    discardSelection();
   };
 
   const loadLabelData = async (data: ExportedLabelTemplate) => {
@@ -676,7 +692,7 @@
       </div>
 
       <div class="canvas-viewport" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight}>
-        <div class="canvas-scroll">
+        <div class="canvas-scroll" onpointerdown={onCanvasBackgroundPointerDown} role="presentation">
           <div class="label-on-stage">
             <div class="feed-caption">
               <MdIcon icon={labelProps.printDirection === "left" ? "west" : "north"} />
@@ -745,6 +761,14 @@
               ><MdIcon icon="add" /> {$tr("editor.objectpicker.text")}</button>
           </div>
         {:else}
+          {#if selectedObject && selectedCount === 1}
+            <div class="inspector-section">
+              <span class="field-caption">{$tr("workspace.position")}</span>
+              <div class="property-controls">
+                <GenericObjectParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              </div>
+            </div>
+          {/if}
           {#if selectedObject instanceof fabric.IText}
             <div class="inspector-section">
               <label class="field-caption" for="label-text-content">{$tr("workspace.text.content")}</label>
@@ -787,14 +811,6 @@
               {/if}
             </div>
           </div>
-          {#if selectedObject && selectedCount === 1}
-            <div class="inspector-section">
-              <span class="field-caption">{$tr("workspace.position")}</span>
-              <div class="property-controls">
-                <GenericObjectParamsControls {selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
-              </div>
-            </div>
-          {/if}
           <div class="selection-actions">
             <button class="btn studio-secondary" onclick={cloneSelected}
               ><MdIcon icon="content_copy" /> {$tr("editor.clone")}</button>
