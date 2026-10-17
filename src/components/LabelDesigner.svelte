@@ -3,6 +3,8 @@
   import * as fabric from "fabric";
   import { onDestroy, onMount, tick, type Snippet } from "svelte";
   import { ArUcoMarker } from "$/fabric-object/aruco";
+  import { LabelBorder } from "$/fabric-object/border";
+  import BorderParamsControls from "$/components/designer-controls/BorderParamsControls.svelte";
   import { Barcode } from "$/fabric-object/barcode";
   import { QRCode } from "$/fabric-object/qrcode";
   import { iconCodepoints, type MaterialIcon } from "$/styles/mdi_icons";
@@ -78,6 +80,7 @@
   const insertTools: { type: OjectType; icon: MaterialIcon }[] = [
     { type: "text", icon: "title" },
     { type: "image", icon: "image" },
+    { type: "border", icon: "filter_frames" },
     { type: "qrcode", icon: "qr_code_2" },
     { type: "barcode", icon: "view_week" },
   ];
@@ -462,7 +465,12 @@
 
     fabricCanvas.on("object:modified", (): void => {
       hasUnsavedChanges = true;
+      editRevision++;
       undo.push(fabricCanvas!, labelProps);
+    });
+
+    fabricCanvas.on("object:resizing", (): void => {
+      editRevision++;
     });
 
     fabricCanvas.on("object:added", (): void => {
@@ -788,6 +796,9 @@
           <div class="inspector-section">
             <span class="field-caption">{$tr("workspace.appearance")}</span>
             <div class="property-controls">
+              {#if selectedObject instanceof LabelBorder}
+                <BorderParamsControls selectedBorder={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+              {/if}
               {#if selectedObject instanceof fabric.IText}
                 <TextParamsControls selectedText={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
               {/if}

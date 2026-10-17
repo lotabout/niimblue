@@ -46,6 +46,10 @@
     <MdIcon icon="crop_square" />
     {$tr("editor.objectpicker.rectangle")}
   </button>
+  <button class="btn me-1" onclick={() => onClick("border")}>
+    <MdIcon icon="filter_frames" />
+    {$tr("editor.objectpicker.border")}
+  </button>
   <button class="btn me-1" onclick={() => onClick("circle")}>
     <MdIcon icon="radio_button_unchecked" />
     {$tr("editor.objectpicker.circle")}

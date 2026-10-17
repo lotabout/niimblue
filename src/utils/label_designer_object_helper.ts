@@ -1,6 +1,7 @@
 import * as fabric from "fabric";
 import { OBJECT_DEFAULTS, OBJECT_DEFAULTS_TEXT, OBJECT_DEFAULTS_VECTOR, OBJECT_SIZE_DEFAULTS } from "$/defaults";
 import { ArUcoMarker } from "$/fabric-object/aruco";
+import { LabelBorder } from "$/fabric-object/border";
 import Barcode from "$/fabric-object/barcode";
 import { QRCode } from "$/fabric-object/qrcode";
 import type { OjectType } from "$/types";
@@ -136,6 +137,22 @@ export class LabelDesignerObjectHelper {
     return obj;
   }
 
+  static addBorder(canvas: fabric.Canvas): LabelBorder {
+    // Keep the initial artwork small enough for narrow labels, including the repeating styles.
+    const decorationSize = Math.min(16, Math.max(4, Math.floor((Math.min(canvas.width, canvas.height) - 20) / 3)));
+    const obj = new LabelBorder({
+      ...OBJECT_DEFAULTS,
+      decorationSize,
+      left: 4,
+      top: 4,
+      width: canvas.width - 8,
+      height: canvas.height - 8,
+    });
+    canvas.add(obj);
+    canvas.sendObjectToBack(obj);
+    return obj;
+  }
+
   static addQrCode(canvas: fabric.Canvas): QRCode {
     const qr = new QRCode({
       text: "NiimBlue",
@@ -176,6 +193,8 @@ export class LabelDesignerObjectHelper {
         return this.addCircle(canvas);
       case "rectangle":
         return this.addRect(canvas);
+      case "border":
+        return this.addBorder(canvas);
       case "image":
         this.addImageWithFilePicker(canvas);
         return;
