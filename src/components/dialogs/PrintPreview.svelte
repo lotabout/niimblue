@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { derived } from "svelte/store";
-  import { connectionState, printerClient, printerMeta } from "$/stores/app";
+  import { connectedPrinterName, connectionState, printerClient, printerMeta } from "$/stores/app";
   import * as effects from "$/utils/post_process";
   import {
     type EncodedImage,
@@ -408,14 +408,15 @@
 </script>
 
 <AppModal title={$tr("preview.title")} onClose={onModalClose} bind:this={modalRef}>
-  <div class="d-flex justify-content-center">
+  <p class="preview-subtitle">{$tr("workspace.preview.hint")}</p>
+  <div class="d-flex justify-content-center align-items-center preview-stage">
     {#if pagesTotal > 1}
       <button disabled={printState !== "idle"} class="btn w-100 fs-1" onclick={pageDown}>
         <MdIcon icon="chevron_left" />
       </button>
     {/if}
 
-    <canvas class="print-start-{labelProps.printDirection}" bind:this={previewCanvas}></canvas>
+    <canvas bind:this={previewCanvas}></canvas>
 
     {#if pagesTotal > 1}
       <button disabled={printState !== "idle"} class="btn w-100 fs-1" onclick={pageUp}>
@@ -445,262 +446,284 @@
     {/if}
   </div>
 
-  {#snippet footer()}
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.postprocess")}</span>
-
-      <select
-        class="form-select"
-        bind:value={postProcessType}
-        onchange={() => updateSavedProp("postProcess", postProcessType, true)}>
-        <option value="threshold">{$tr("preview.postprocess.threshold")}</option>
-        <option value="threshold_rb" disabled={!taskHasCap(TaskCap.SupportDoubleColor)}
-          >{$tr("preview.postprocess.threshold.red")}</option>
-        <option value="dither">{$tr("preview.postprocess.atkinson")}</option>
-        <option value="bayer2">{$tr("preview.postprocess.bayer")} 2x2</option>
-        <option value="bayer4">{$tr("preview.postprocess.bayer")} 4x4</option>
-        <option value="bayer8">{$tr("preview.postprocess.bayer")} 8x8</option>
-        <option value="floyd_steinberg">{$tr("preview.postprocess.floyd_steinberg")}</option>
-        <option value="jjn">{$tr("preview.postprocess.jjn")}</option>
-        <option value="stucki">{$tr("preview.postprocess.stucki")}</option>
-      </select>
-
-      <ParamLockButton
-        propName="postProcess"
-        value={postProcessType}
-        savedValue={savedProps.postProcess}
-        onClick={toggleSavedProp} />
-
-      <button
-        class="btn btn-sm {postProcessInvert ? 'btn-secondary' : 'btn-outline-secondary'}"
-        onclick={() => {
-          postProcessInvert = !postProcessInvert;
-          updatePreview();
-        }}>
-        <MdIcon icon="invert_colors" />
-      </button>
-
-      <button
-        class="btn btn-sm {postProcessMirror ? 'btn-secondary' : 'btn-outline-secondary'}"
-        onclick={() => {
-          postProcessMirror = !postProcessMirror;
-          updatePreview();
-        }}>
-        <MdIcon icon="flip" />
-      </button>
+  <div class="preview-device">
+    <MdIcon icon="print" />
+    <div>
+      <span>{$tr("workspace.preview.device")}</span><strong
+        >{$disconnected
+          ? $tr("workspace.device.disconnected")
+          : ($printerMeta?.model ?? $connectedPrinterName)}</strong>
     </div>
-
-    {#if !(postProcessType && ["bayer2", "bayer4", "bayer8"].includes(postProcessType))}
-      <div class="input-group input-group-sm">
-        <span class="input-group-text">{$tr("preview.threshold")}</span>
-
-        <input
-          type="range"
-          id="threshold"
-          class="form-range"
-          min="1"
-          max="255"
-          bind:value={thresholdValue}
-          onchange={() => updateSavedProp("threshold", thresholdValue, true)} />
-        <span class="input-group-text">{thresholdValue}</span>
-
-        <ParamLockButton
-          propName="threshold"
-          value={thresholdValue}
-          savedValue={savedProps.threshold}
-          onClick={toggleSavedProp} />
-      </div>
-    {/if}
-
-    {#if postProcessType === "floyd_steinberg" || postProcessType === "jjn" || postProcessType === "stucki" || postProcessType === "dither"}
-      <div class="input-group input-group-sm">
-        <span class="input-group-text">{$tr("preview.strength")}</span>
-
-        <input
-          type="range"
-          id="strength"
-          class="form-range"
-          min="0"
-          max="1.5"
-          step="0.1"
-          bind:value={strengthValue}
-          onchange={() => updateSavedProp("strength", strengthValue, true)} />
-        <span class="input-group-text">{strengthValue.toFixed(1)}</span>
-
-        <ParamLockButton
-          propName="strength"
-          value={strengthValue}
-          savedValue={savedProps.strength}
-          onClick={toggleSavedProp} />
-
-        <button
-          class="btn btn-sm {serpentineValue ? 'btn-secondary' : 'btn-outline-secondary'}"
-          title={$tr("preview.serpentine")}
-          onclick={() => {
-            serpentineValue = !serpentineValue;
-            updateSavedProp("serpentine", serpentineValue, true);
-          }}>
-          <MdIcon icon="swap_vert" />
-        </button>
-      </div>
-    {/if}
-
-    {#if postProcessType === "threshold_rb"}
-      <div class="input-group input-group-sm">
-        <span class="input-group-text">{$tr("preview.threshold.red")}</span>
-
-        <input
-          type="range"
-          id="thresholdRed"
-          class="form-range"
-          min="1"
-          max="255"
-          bind:value={thresholdValueRed}
-          onchange={() => updateSavedProp("thresholdRed", thresholdValueRed, true)} />
-        <span class="input-group-text">{thresholdValueRed}</span>
-
-        <ParamLockButton
-          propName="thresholdRed"
-          value={thresholdValueRed}
-          savedValue={savedProps.thresholdRed}
-          onClick={toggleSavedProp} />
-      </div>
-    {/if}
-
-    <div class="input-group flex-nowrap input-group-sm">
-      <span class="input-group-text">{$tr("preview.copies")}</span>
-      <input
-        class="form-control"
-        type="number"
-        min="1"
-        bind:value={quantity}
-        onchange={() => updateSavedProp("quantity", quantity)} />
-      <ParamLockButton
-        propName="quantity"
-        value={quantity}
-        savedValue={savedProps.quantity}
-        onClick={toggleSavedProp} />
-    </div>
-
-    <div class="input-group flex-nowrap input-group-sm">
-      <span class="input-group-text">{$tr("preview.density")}</span>
-      <input
-        class="form-control"
-        type="number"
-        min={$printerMeta?.densityMin ?? 1}
-        max={$printerMeta?.densityMax ?? 20}
-        bind:value={density}
-        onchange={() => updateSavedProp("density", density)} />
-      <ParamLockButton propName="density" value={density} savedValue={savedProps.density} onClick={toggleSavedProp} />
-    </div>
-
-    {#if printTaskName === "D110M_V4"}
+    <span class="connection-dot" class:connected={!$disconnected}></span>
+  </div>
+  {#if $disconnected}
+    <p class="connection-hint">{$tr("workspace.preview.connect")}</p>
+  {/if}
+  <fieldset class="preview-settings" disabled={printState !== "idle"}>
+    <div class="basic-settings">
       <div class="input-group flex-nowrap input-group-sm">
-        <span class="input-group-text">{$tr("preview.speed")}</span>
-        <select class="form-select" bind:value={speed} onchange={() => updateSavedProp("speed", speed, true)}>
-          <option value={0}>{$tr("preview.speed.0")}</option>
-          <option value={1}>{$tr("preview.speed.1")}</option>
-        </select>
-
-        <ParamLockButton propName="speed" value={speed} savedValue={savedProps.speed} onClick={toggleSavedProp} />
+        <span class="input-group-text">{$tr("preview.copies")}</span>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          bind:value={quantity}
+          onchange={() => updateSavedProp("quantity", quantity)} />
+        <ParamLockButton
+          propName="quantity"
+          value={quantity}
+          savedValue={savedProps.quantity}
+          onClick={toggleSavedProp} />
       </div>
-    {/if}
 
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.label_type")}</span>
-      <select class="form-select" bind:value={labelType} onchange={() => updateSavedProp("labelType", labelType)}>
-        {#each Object.values(LabelType) as lt (lt)}
-          {#if typeof lt !== "string"}
-            <option value={lt}>
-              {#if $printerMeta?.paperTypes.includes(lt)}✔{/if}
-              {$tr(labelTypeTranslationKey(LabelType[lt]))}
-            </option>
+      <div class="input-group flex-nowrap input-group-sm">
+        <span class="input-group-text">{$tr("preview.density")}</span>
+        <input
+          class="form-control"
+          type="number"
+          min={$printerMeta?.densityMin ?? 1}
+          max={$printerMeta?.densityMax ?? 20}
+          bind:value={density}
+          onchange={() => updateSavedProp("density", density)} />
+        <ParamLockButton propName="density" value={density} savedValue={savedProps.density} onClick={toggleSavedProp} />
+      </div>
+    </div>
+    <details class="advanced-settings">
+      <summary
+        ><div><strong>{$tr("workspace.advanced")}</strong><span>{$tr("workspace.advanced.hint")}</span></div>
+        <MdIcon icon="expand_more" /></summary>
+      <div class="advanced-fields">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">{$tr("preview.postprocess")}</span>
+
+          <select
+            class="form-select"
+            bind:value={postProcessType}
+            onchange={() => updateSavedProp("postProcess", postProcessType, true)}>
+            <option value="threshold">{$tr("preview.postprocess.threshold")}</option>
+            <option value="threshold_rb" disabled={!taskHasCap(TaskCap.SupportDoubleColor)}
+              >{$tr("preview.postprocess.threshold.red")}</option>
+            <option value="dither">{$tr("preview.postprocess.atkinson")}</option>
+            <option value="bayer2">{$tr("preview.postprocess.bayer")} 2x2</option>
+            <option value="bayer4">{$tr("preview.postprocess.bayer")} 4x4</option>
+            <option value="bayer8">{$tr("preview.postprocess.bayer")} 8x8</option>
+            <option value="floyd_steinberg">{$tr("preview.postprocess.floyd_steinberg")}</option>
+            <option value="jjn">{$tr("preview.postprocess.jjn")}</option>
+            <option value="stucki">{$tr("preview.postprocess.stucki")}</option>
+          </select>
+
+          <ParamLockButton
+            propName="postProcess"
+            value={postProcessType}
+            savedValue={savedProps.postProcess}
+            onClick={toggleSavedProp} />
+
+          <button
+            class="btn btn-sm {postProcessInvert ? 'btn-secondary' : 'btn-outline-secondary'}"
+            onclick={() => {
+              postProcessInvert = !postProcessInvert;
+              updatePreview();
+            }}>
+            <MdIcon icon="invert_colors" />
+          </button>
+
+          <button
+            class="btn btn-sm {postProcessMirror ? 'btn-secondary' : 'btn-outline-secondary'}"
+            onclick={() => {
+              postProcessMirror = !postProcessMirror;
+              updatePreview();
+            }}>
+            <MdIcon icon="flip" />
+          </button>
+        </div>
+
+        {#if !(postProcessType && ["bayer2", "bayer4", "bayer8"].includes(postProcessType))}
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">{$tr("preview.threshold")}</span>
+
+            <input
+              type="range"
+              id="threshold"
+              class="form-range"
+              min="1"
+              max="255"
+              bind:value={thresholdValue}
+              onchange={() => updateSavedProp("threshold", thresholdValue, true)} />
+            <span class="input-group-text">{thresholdValue}</span>
+
+            <ParamLockButton
+              propName="threshold"
+              value={thresholdValue}
+              savedValue={savedProps.threshold}
+              onClick={toggleSavedProp} />
+          </div>
+        {/if}
+
+        {#if postProcessType === "floyd_steinberg" || postProcessType === "jjn" || postProcessType === "stucki" || postProcessType === "dither"}
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">{$tr("preview.strength")}</span>
+
+            <input
+              type="range"
+              id="strength"
+              class="form-range"
+              min="0"
+              max="1.5"
+              step="0.1"
+              bind:value={strengthValue}
+              onchange={() => updateSavedProp("strength", strengthValue, true)} />
+            <span class="input-group-text">{strengthValue.toFixed(1)}</span>
+
+            <ParamLockButton
+              propName="strength"
+              value={strengthValue}
+              savedValue={savedProps.strength}
+              onClick={toggleSavedProp} />
+
+            <button
+              class="btn btn-sm {serpentineValue ? 'btn-secondary' : 'btn-outline-secondary'}"
+              title={$tr("preview.serpentine")}
+              onclick={() => {
+                serpentineValue = !serpentineValue;
+                updateSavedProp("serpentine", serpentineValue, true);
+              }}>
+              <MdIcon icon="swap_vert" />
+            </button>
+          </div>
+        {/if}
+
+        {#if postProcessType === "threshold_rb"}
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">{$tr("preview.threshold.red")}</span>
+
+            <input
+              type="range"
+              id="thresholdRed"
+              class="form-range"
+              min="1"
+              max="255"
+              bind:value={thresholdValueRed}
+              onchange={() => updateSavedProp("thresholdRed", thresholdValueRed, true)} />
+            <span class="input-group-text">{thresholdValueRed}</span>
+
+            <ParamLockButton
+              propName="thresholdRed"
+              value={thresholdValueRed}
+              savedValue={savedProps.thresholdRed}
+              onClick={toggleSavedProp} />
+          </div>
+        {/if}
+
+        {#if printTaskName === "D110M_V4"}
+          <div class="input-group flex-nowrap input-group-sm">
+            <span class="input-group-text">{$tr("preview.speed")}</span>
+            <select class="form-select" bind:value={speed} onchange={() => updateSavedProp("speed", speed, true)}>
+              <option value={0}>{$tr("preview.speed.0")}</option>
+              <option value={1}>{$tr("preview.speed.1")}</option>
+            </select>
+
+            <ParamLockButton propName="speed" value={speed} savedValue={savedProps.speed} onClick={toggleSavedProp} />
+          </div>
+        {/if}
+
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">{$tr("preview.label_type")}</span>
+          <select class="form-select" bind:value={labelType} onchange={() => updateSavedProp("labelType", labelType)}>
+            {#each Object.values(LabelType) as lt (lt)}
+              {#if typeof lt !== "string"}
+                <option value={lt}>
+                  {#if $printerMeta?.paperTypes.includes(lt)}✔{/if}
+                  {$tr(labelTypeTranslationKey(LabelType[lt]))}
+                </option>
+              {/if}
+            {/each}
+          </select>
+
+          <ParamLockButton
+            propName="labelType"
+            value={labelType}
+            savedValue={savedProps.labelType}
+            onClick={toggleSavedProp} />
+        </div>
+
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">{$tr("preview.print_task")}</span>
+          <select
+            class="form-select"
+            bind:value={printTaskName}
+            onchange={() => {
+              updateSavedProp("printTaskName", printTaskName);
+              if (!taskHasCap(TaskCap.SupportDoubleColor) && postProcessType === "threshold_rb") {
+                postProcessType = "threshold";
+                updatePreview();
+              }
+            }}>
+            {#each printTaskNames as name (name)}
+              <option value={name}>
+                {#if detectedPrintTaskName === name}✔{/if}
+                {name}
+              </option>
+            {/each}
+          </select>
+
+          <ParamLockButton
+            propName="printTaskName"
+            value={printTaskName}
+            savedValue={savedProps.printTaskName}
+            onClick={toggleSavedProp} />
+        </div>
+
+        <div class="input-group input-group-sm">
+          <label class="input-group-text" for="print-session-mode">{$tr("preview.session_mode")}</label>
+          <select
+            id="print-session-mode"
+            class="form-select"
+            disabled={printState !== "idle"}
+            bind:value={printSessionMode}
+            onchange={() => updateSavedProp("printSessionMode", printSessionMode)}>
+            <option value="auto">{$tr("preview.session_mode.auto")}</option>
+            <option value="per_page">{$tr("preview.session_mode.per_page")}</option>
+            <option value="continuous">{$tr("preview.session_mode.continuous")}</option>
+          </select>
+          <ParamLockButton
+            propName="printSessionMode"
+            value={printSessionMode}
+            savedValue={savedProps.printSessionMode}
+            onClick={toggleSavedProp} />
+        </div>
+        <div class="small text-body-secondary">{$tr("preview.session_mode.help")}</div>
+
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">{$tr("preview.offset")}</span>
+          {#if offsetWarning}
+            <span class="input-group-text text-warning" title={offsetWarning}><MdIcon icon="warning" /></span>
           {/if}
-        {/each}
-      </select>
+          <span class="input-group-text"><MdIcon icon="unfold_more" class="r-90" /></span>
+          <input
+            class="form-control"
+            type="number"
+            bind:value={offset.x}
+            onchange={() => updateSavedProp("offset", offset, true)} />
+          <span class="input-group-text"><MdIcon icon="unfold_more" /></span>
+          <input
+            class="form-control"
+            type="number"
+            bind:value={offset.y}
+            onchange={() => updateSavedProp("offset", offset, true)} />
+          <select
+            class="form-select"
+            bind:value={offset.offsetType}
+            onchange={() => updateSavedProp("offset", offset, true)}>
+            <option value="inner">{$tr("preview.offset.inner")}</option>
+            <option value="outer">{$tr("preview.offset.outer")}</option>
+          </select>
 
-      <ParamLockButton
-        propName="labelType"
-        value={labelType}
-        savedValue={savedProps.labelType}
-        onClick={toggleSavedProp} />
-    </div>
-
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.print_task")}</span>
-      <select
-        class="form-select"
-        bind:value={printTaskName}
-        onchange={() => {
-          updateSavedProp("printTaskName", printTaskName);
-          if (!taskHasCap(TaskCap.SupportDoubleColor) && postProcessType === "threshold_rb") {
-            postProcessType = "threshold";
-            updatePreview();
-          }
-        }}>
-        {#each printTaskNames as name (name)}
-          <option value={name}>
-            {#if detectedPrintTaskName === name}✔{/if}
-            {name}
-          </option>
-        {/each}
-      </select>
-
-      <ParamLockButton
-        propName="printTaskName"
-        value={printTaskName}
-        savedValue={savedProps.printTaskName}
-        onClick={toggleSavedProp} />
-    </div>
-
-    <div class="input-group input-group-sm">
-      <label class="input-group-text" for="print-session-mode">{$tr("preview.session_mode")}</label>
-      <select
-        id="print-session-mode"
-        class="form-select"
-        disabled={printState !== "idle"}
-        bind:value={printSessionMode}
-        onchange={() => updateSavedProp("printSessionMode", printSessionMode)}>
-        <option value="auto">{$tr("preview.session_mode.auto")}</option>
-        <option value="per_page">{$tr("preview.session_mode.per_page")}</option>
-        <option value="continuous">{$tr("preview.session_mode.continuous")}</option>
-      </select>
-      <ParamLockButton
-        propName="printSessionMode"
-        value={printSessionMode}
-        savedValue={savedProps.printSessionMode}
-        onClick={toggleSavedProp} />
-    </div>
-    <div class="small text-body-secondary">{$tr("preview.session_mode.help")}</div>
-
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">{$tr("preview.offset")}</span>
-      {#if offsetWarning}
-        <span class="input-group-text text-warning" title={offsetWarning}><MdIcon icon="warning" /></span>
-      {/if}
-      <span class="input-group-text"><MdIcon icon="unfold_more" class="r-90" /></span>
-      <input
-        class="form-control"
-        type="number"
-        bind:value={offset.x}
-        onchange={() => updateSavedProp("offset", offset, true)} />
-      <span class="input-group-text"><MdIcon icon="unfold_more" /></span>
-      <input
-        class="form-control"
-        type="number"
-        bind:value={offset.y}
-        onchange={() => updateSavedProp("offset", offset, true)} />
-      <select
-        class="form-select"
-        bind:value={offset.offsetType}
-        onchange={() => updateSavedProp("offset", offset, true)}>
-        <option value="inner">{$tr("preview.offset.inner")}</option>
-        <option value="outer">{$tr("preview.offset.outer")}</option>
-      </select>
-
-      <ParamLockButton propName="offset" value={offset} savedValue={savedProps.offset} onClick={toggleSavedProp} />
-    </div>
-
+          <ParamLockButton propName="offset" value={offset} savedValue={savedProps.offset} onClick={toggleSavedProp} />
+        </div>
+      </div>
+    </details>
+  </fieldset>
+  {#snippet footer()}
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{$tr("preview.close")}</button>
 
     {#if printState !== "idle"}
@@ -736,16 +759,118 @@
 </AppModal>
 
 <style>
+  .preview-subtitle {
+    font-size: 12px;
+    color: #a7b2c7;
+    margin: 0 0 16px;
+  }
+  .preview-stage {
+    min-height: 156px;
+    padding: 24px 16px;
+    border-radius: 10px;
+    background: #191d24;
+    border: 1px solid #303744;
+  }
   canvas {
     image-rendering: pixelated;
-    border: 1px solid #6d6d6d;
+    border: 1px solid #dce1eb;
     max-width: 100%;
+    max-height: 230px;
+    object-fit: contain;
+    box-shadow: 0 8px 20px #0003;
   }
-  canvas.print-start-left {
-    border-left: 2px solid #ff4646;
+  .preview-device {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    margin-top: 24px;
+    border: 1px solid #3b424e;
+    border-radius: 10px;
+    background: #232832;
   }
-  canvas.print-start-top {
-    border-top: 2px solid #ff4646;
+  .preview-device > :global(.mdi) {
+    color: #96b8ef;
+  }
+  .preview-device > div {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .preview-device strong {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .preview-device span {
+    color: #a5aec0;
+    font-size: 10px;
+  }
+  .preview-device .connection-dot {
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    background: #8993a7;
+    border-radius: 50%;
+  }
+  .preview-device .connection-dot.connected {
+    background: #6ed6ad;
+  }
+  .connection-hint {
+    color: #a5b0c4;
+    font-size: 11px;
+    line-height: 1.8;
+    margin: 10px 2px 0;
+  }
+  .preview-settings {
+    margin-top: 20px;
+  }
+  .basic-settings {
+    display: grid;
+    gap: 12px;
+  }
+  .basic-settings :global(.input-group-text) {
+    min-width: 84px;
+  }
+  .advanced-settings {
+    margin-top: 20px;
+    border-top: 1px solid #3b424e;
+  }
+  summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 0 4px;
+    list-style: none;
+    cursor: pointer;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary strong {
+    display: block;
+    color: #d2daea;
+    font-size: 12px;
+    font-weight: 550;
+  }
+  summary span {
+    display: block;
+    margin-top: 6px;
+    color: #9ba7bc;
+    font-size: 10px;
+    line-height: 1.6;
+  }
+  summary :global(.mdi) {
+    color: #a2b3cd;
+    transition: transform 0.15s;
+  }
+  details[open] summary :global(.mdi) {
+    transform: rotate(180deg);
+  }
+  .advanced-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 18px;
   }
   .progress-bar {
     transition: none;

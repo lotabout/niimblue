@@ -217,7 +217,6 @@
           >{$tr("connector.settings.connection_sound")}</label>
       </div>
 
-
       <button class="btn btn-sm btn-outline-secondary w-100 mt-3" onclick={() => (verboseInfoShow = true)}
         >{$tr("connector.open_verbose")}</button>
 
@@ -239,7 +238,8 @@
         type="button"
         data-bs-toggle="collapse"
         data-bs-target="#tests">
-        {$tr("debug.title")} <MdIcon icon="expand_more" />
+        {$tr("debug.title")}
+        <MdIcon icon="expand_more" />
       </button>
 
       <div class="collapse" id="tests">
@@ -297,16 +297,21 @@
 
   {#if $connectionState !== "connected"}
     <button
-      class="btn btn-primary"
+      class="btn btn-primary text-nowrap"
       disabled={$connectionState === "connecting" ||
         (!featureSupport.capacitorBle && !featureSupport.webBluetooth && !featureSupport.webSerial)}
       onclick={onConnectClicked}>
       <MdIcon icon="power" />
+      {$tr("workspace.connect")}
     </button>
   {/if}
 
   {#if $connectionState === "connected"}
-    <button class="btn btn-danger" onclick={onDisconnectClicked}>
+    <button
+      class="btn btn-danger"
+      title={$tr("workspace.disconnect")}
+      aria-label={$tr("workspace.disconnect")}
+      onclick={onDisconnectClicked}>
       <MdIcon icon="power_off" />
     </button>
   {/if}

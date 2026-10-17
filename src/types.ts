@@ -33,6 +33,7 @@ export const PreviewPropsOffsetSchema = z.object({
 });
 
 export const LabelPropsSchema = z.object({
+  dpmm: z.number().positive().optional(),
   printDirection: z.enum(["left", "top"]),
   size: z.object({
     width: z.number().positive(),

@@ -93,9 +93,9 @@
 
     // mm to px
     if (unit === "mm") {
-      newWidth *= dpmm;
-      newHeight *= dpmm;
-      newTailLength *= dpmm;
+      newWidth = Math.round(newWidth * dpmm);
+      newHeight = Math.round(newHeight * dpmm);
+      newTailLength = Math.round(newTailLength * dpmm);
     }
 
     // limit min size
@@ -110,6 +110,7 @@
     }
 
     onChange({
+      dpmm,
       printDirection: printDirection,
       size: {
         width: Math.floor(newWidth),
@@ -253,14 +254,15 @@
       height = Math.floor(height * dpmm);
       tailLength = Math.floor(tailLength * dpmm);
     } else if (prevUnit === "px" && unit === "mm") {
-      width = Math.floor(width / dpmm);
-      height = Math.floor(height / dpmm);
-      tailLength = Math.floor(tailLength / dpmm);
+      width = Number((width / dpmm).toFixed(3));
+      height = Number((height / dpmm).toFixed(3));
+      tailLength = Number((tailLength / dpmm).toFixed(3));
     }
     prevUnit = unit;
   };
 
   const fillWithCurrentParams = () => {
+    dpmm = labelProps.dpmm ?? ($printerMeta?.dpi === 300 ? 11.81 : 8);
     prevUnit = "px";
     width = labelProps.size.width;
     height = labelProps.size.height;
@@ -382,9 +384,9 @@
 
   <div class="input-group flex-nowrap input-group-sm mb-2">
     <span class="input-group-text">{$tr("params.label.size")}</span>
-    <input class="form-control" type="number" min="1" step={unit === "px" ? 8 : 1} bind:value={width} />
+    <input class="form-control" type="number" min="1" step={unit === "px" ? 8 : "any"} bind:value={width} />
     <button class="btn btn-sm btn-secondary" onclick={onFlip}><MdIcon icon="swap_horiz" /></button>
-    <input class="form-control" type="number" min="1" step={unit === "px" ? 8 : 1} bind:value={height} />
+    <input class="form-control" type="number" min="1" step={unit === "px" ? 8 : "any"} bind:value={height} />
     <select class="form-select" bind:value={unit} onchange={onUnitChange}>
       <option value="mm"> {$tr("params.label.mm")}</option>
       <option value="px"> {$tr("params.label.px")}</option>

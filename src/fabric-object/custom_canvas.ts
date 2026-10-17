@@ -83,8 +83,6 @@ export class CustomCanvas extends fabric.Canvas {
               x: (touch1.clientX + touch2.clientX) / 2,
               y: (touch1.clientY + touch2.clientY) / 2,
             };
-          } else if (e.touches.length === 1) {
-
           }
         },
         { passive: false },
@@ -123,7 +121,7 @@ export class CustomCanvas extends fabric.Canvas {
             const dx = currentMidPoint.x - lastMidPoint.x;
             const dy = currentMidPoint.y - lastMidPoint.y;
 
-            const wrapper = this.getElement().closest(".canvas-wrapper");
+            const wrapper = this.getElement().closest(".canvas-scroll") ?? this.getElement().closest(".canvas-wrapper");
             if (wrapper) {
               wrapper.scrollLeft -= dx;
               wrapper.scrollTop -= dy;
