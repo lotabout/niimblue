@@ -84,10 +84,10 @@ export const OBJECT_DEFAULTS_TEXT = {
 } as fabric.TextboxProps;
 
 /** Scale image to this height when making a label thumbnail */
-export const THUMBNAIL_HEIGHT = 48;
+export const THUMBNAIL_HEIGHT = 336;
 
-/** Generate thumbnail in jpeg format with this quality */
-export const THUMBNAIL_QUALITY = 0.7;
+/** Bound wide label thumbnails to keep saved previews compact. */
+export const THUMBNAIL_MAX_WIDTH = 768;
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
   fitMode: "stretch",

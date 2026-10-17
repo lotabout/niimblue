@@ -8,7 +8,7 @@ import {
   type LabelPreset,
   type LabelProps,
 } from "$/types";
-import { OBJECT_DEFAULTS, OBJECT_DEFAULTS_VECTOR, THUMBNAIL_HEIGHT, THUMBNAIL_QUALITY } from "$/defaults";
+import { OBJECT_DEFAULTS, OBJECT_DEFAULTS_VECTOR, THUMBNAIL_HEIGHT, THUMBNAIL_MAX_WIDTH } from "$/defaults";
 import { z } from "zod";
 import { CustomCanvas } from "$/fabric-object/custom_canvas";
 import { Capacitor } from "@capacitor/core";
@@ -161,21 +161,23 @@ export class FileUtils {
     FileUtils.downloadBase64Web(filename, mime, base64Data);
   }
 
-  static makeExportedLabel(canvas: fabric.Canvas, labelProps: LabelProps, includeCsv: boolean): ExportedLabelTemplate {
-    const thumbnailBase64: string = canvas.toDataURL({
+  static makeLabelThumbnail(canvas: fabric.Canvas): string {
+    return canvas.toDataURL({
       width: canvas.width,
       height: canvas.height,
       left: 0,
       top: 0,
-      multiplier: THUMBNAIL_HEIGHT / (canvas.height || 1),
-      quality: THUMBNAIL_QUALITY,
-      format: "jpeg",
+      multiplier: Math.min(THUMBNAIL_HEIGHT / (canvas.height || 1), THUMBNAIL_MAX_WIDTH / (canvas.width || 1)),
+      enableRetinaScaling: false,
+      format: "png",
     });
+  }
 
+  static makeExportedLabel(canvas: fabric.Canvas, labelProps: LabelProps, includeCsv: boolean): ExportedLabelTemplate {
     const tpl: ExportedLabelTemplate = {
       canvas: canvas.toJSON(),
       label: labelProps,
-      thumbnailBase64,
+      thumbnailBase64: FileUtils.makeLabelThumbnail(canvas),
       timestamp: FileUtils.timestamp(),
     };
 
@@ -202,11 +204,7 @@ export class FileUtils {
   /** Export all saved labels to one JSON file */
   static saveLabelsAsJson(labels: ExportedLabelTemplate[]) {
     const parsed = z.array(ExportedLabelTemplateSchema.omit({ id: true })).parse(labels);
-    FileUtils.downloadBase64(
-      `labels_${FileUtils.timestamp()}.json`,
-      "application/json",
-      FileUtils.base64obj(parsed),
-    );
+    FileUtils.downloadBase64(`labels_${FileUtils.timestamp()}.json`, "application/json", FileUtils.base64obj(parsed));
   }
 
   /** Convert canvas to PNG and download it */
@@ -308,19 +306,23 @@ export class FileUtils {
     return { name: file.name, data };
   }
 
-  static async loadCanvasState(canvas: fabric.Canvas, state: FabricJson): Promise<void> {
+  static async loadCanvasState(canvas: fabric.Canvas, state: FabricJson, signal?: AbortSignal): Promise<void> {
     const deprecatedLines: fabric.Line[] = [];
 
-    await canvas.loadFromJSON(state, (_, obj) => {
-      if (obj instanceof fabric.FabricObject) {
-        obj.set({ snapAngle: OBJECT_DEFAULTS.snapAngle });
-        CanvasUtils.fixFabricObjectScale(obj);
+    await canvas.loadFromJSON(
+      state,
+      (_, obj) => {
+        if (obj instanceof fabric.FabricObject) {
+          obj.set({ snapAngle: OBJECT_DEFAULTS.snapAngle });
+          CanvasUtils.fixFabricObjectScale(obj);
 
-        if (obj instanceof fabric.Line) {
-          deprecatedLines.push(obj);
+          if (obj instanceof fabric.Line) {
+            deprecatedLines.push(obj);
+          }
         }
-      }
-    });
+      },
+      { signal },
+    );
 
     // convert deprecated Line to Polyline
     for (const line of deprecatedLines) {

@@ -219,71 +219,87 @@
   });
 </script>
 
-<AppModal title={$tr("workspace.library")} {onClose} bind:this={modalRef}>
-  <div class="mb-1">
-    <span>{$tr($storageConfig.mode === "remote" ? "storage.remote" : "storage.local")}</span>
-    {#if $storageConfig.mode === "local"}
-      · {usedSpace} {$tr("params.saved_labels.kb_used")}
-    {/if}
-    <button class="btn btn-sm btn-outline-secondary ms-2" disabled={loading} onclick={refresh}
-      >{$tr(loading ? "storage.loading" : "storage.refresh")}</button>
-    {#if error}<div class="alert alert-danger mt-2" role="alert">{error}</div>{/if}
+<AppModal title={$tr("workspace.library")} variant="library" {onClose} bind:this={modalRef}>
+  <div class="library-toolbar">
+    <div class="library-summary">
+      <span class="label-count">{$tr("workspace.library.count").replace("{count}", String(savedLabels.length))}</span>
+      <span class="storage-status">
+        <MdIcon icon={$storageConfig.mode === "remote" ? "cloud_done" : "computer"} />
+        {$tr($storageConfig.mode === "remote" ? "storage.remote" : "storage.local")}
+        {#if $storageConfig.mode === "local"}
+          <span class="storage-usage">· {usedSpace} {$tr("params.saved_labels.kb_used")}</span>
+        {/if}
+      </span>
+    </div>
 
-    {#if csvEnabled}
-      <div class="pt-1 text-warning">
-        {$tr("params.saved_labels.save.withcsv")}
-      </div>
-    {/if}
-  </div>
-
-  <div class="mb-1">
-    <button class="btn btn-sm btn-outline-secondary" disabled={loading} onclick={onImportClicked}>
-      <MdIcon icon="data_object" />
-      {$tr("params.saved_labels.load.json")}
-    </button>
-    <div class="btn-group btn-group-sm">
+    <div class="library-tools">
+      <button
+        class="btn library-refresh"
+        disabled={loading}
+        onclick={refresh}
+        title={$tr(loading ? "storage.loading" : "storage.refresh")}
+        aria-label={$tr(loading ? "storage.loading" : "storage.refresh")}>
+        <MdIcon icon="refresh" />
+      </button>
       <button
         type="button"
-        class="btn btn-outline-secondary dropdown-toggle"
+        class="btn library-import"
+        title={$tr("params.saved_labels.load.json")}
         disabled={loading}
-        data-bs-toggle="dropdown"
-        aria-expanded="false">
-        <MdIcon icon="data_object" />
-        {$tr("params.saved_labels.save.json")}
+        onclick={onImportClicked}>
+        <MdIcon icon="file_upload" />
+        <span>{$tr("workspace.library.import")}</span>
       </button>
-      <ul class="dropdown-menu">
-        <li><h6 class="dropdown-header">{$tr("params.saved_labels.export.current")}</h6></li>
-        <li>
-          <button class="dropdown-item" onclick={onExportClicked}>
-            {$tr("params.saved_labels.export.json")}
-          </button>
-        </li>
-        <li>
-          <button class="dropdown-item" onclick={onExportPngClicked}>
-            {$tr("params.saved_labels.export.png")}
-          </button>
-        </li>
-        {#if !isStandalone}
+      <div class="btn-group">
+        <button
+          type="button"
+          class="btn library-more"
+          title={$tr("workspace.more")}
+          aria-label={$tr("workspace.more")}
+          disabled={loading}
+          data-bs-toggle="dropdown"
+          aria-expanded="false">
+          <MdIcon icon="more_horiz" />
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><h6 class="dropdown-header">{$tr("params.saved_labels.export.current")}</h6></li>
           <li>
-            <button class="dropdown-item" onclick={onExportUrlClicked}>
-              {$tr("params.saved_labels.save.url")}
+            <button class="dropdown-item" onclick={onExportClicked}>
+              {$tr("params.saved_labels.export.json")}
             </button>
           </li>
-        {/if}
-        <li><hr class="dropdown-divider" /></li>
-        <li><h6 class="dropdown-header">{$tr("params.saved_labels.export.all")}</h6></li>
-        <li>
-          <button class="dropdown-item" onclick={onExportAllClicked}>
-            {$tr("params.saved_labels.export.json")}
-          </button>
-        </li>
-      </ul>
+          <li>
+            <button class="dropdown-item" onclick={onExportPngClicked}>
+              {$tr("params.saved_labels.export.png")}
+            </button>
+          </li>
+          {#if !isStandalone}
+            <li>
+              <button class="dropdown-item" onclick={onExportUrlClicked}>
+                {$tr("params.saved_labels.save.url")}
+              </button>
+            </li>
+          {/if}
+          <li><hr class="dropdown-divider" /></li>
+          <li><h6 class="dropdown-header">{$tr("params.saved_labels.export.all")}</h6></li>
+          <li>
+            <button class="dropdown-item" onclick={onExportAllClicked}>
+              {$tr("params.saved_labels.export.json")}
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 
+  {#if error}<div class="library-notice alert alert-danger" role="alert">{error}</div>{/if}
+  {#if csvEnabled}
+    <div class="library-notice text-warning">{$tr("params.saved_labels.save.withcsv")}</div>
+  {/if}
+
   <SavedLabelsBrowser
-    class="mb-1"
     {selectedIndex}
+    disabled={loading}
     labels={savedLabels}
     onItemClicked={onLabelSelected}
     onItemDelete={onLabelDelete}
@@ -291,27 +307,179 @@
 
   {#snippet footer()}
     <div class="btn-group btn-group-sm make-default">
-      <button class="btn text-secondary" onclick={onMakeDefaultClicked}>
+      <button class="btn default-button" onclick={onMakeDefaultClicked}>
         {$tr("params.saved_labels.make_default")}
       </button>
       {#if customDefaultTemplate}
-        <button class="btn text-secondary" onclick={onRemoveDefaultClicked}>
+        <button
+          class="btn default-button"
+          onclick={onRemoveDefaultClicked}
+          aria-label={$tr("params.label.delete.cancel")}>
           <MdIcon icon="close" />
         </button>
       {/if}
     </div>
 
-    {#if selectedIndex !== -1}
-      <button class="btn btn-sm btn-primary" onclick={onLoadClicked} disabled={loading}>
-        <MdIcon icon="folder" />
-        {$tr("storage.open")}
-      </button>
-    {/if}
+    <button class="btn open-button" onclick={onLoadClicked} disabled={loading || selectedIndex === -1}>
+      <MdIcon icon="folder_open" />
+      {$tr("storage.open")}
+    </button>
   {/snippet}
 </AppModal>
 
 <style>
+  .library-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 20px 28px;
+    flex-shrink: 0;
+  }
+  .library-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .label-count {
+    color: #d8e0ee;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .storage-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #95a4bb;
+    font-size: 12px;
+  }
+  .storage-status :global(.mdi) {
+    color: #8dbaab;
+    font-size: 15px;
+  }
+  .library-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .library-tools .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 36px;
+    border-radius: 7px;
+    color: #c9d5e8;
+    font-size: 13px;
+  }
+  .library-refresh,
+  .library-more {
+    width: 36px;
+    padding: 0;
+    border: 1px solid transparent;
+  }
+  .library-refresh:hover,
+  .library-more:hover {
+    background: #303b4e;
+    color: #fff;
+  }
+  .library-import {
+    padding: 7px 12px;
+    background: transparent;
+    border: 1px solid #414b5c;
+    font-weight: 500;
+    line-height: 20px;
+    white-space: nowrap;
+  }
+  .library-import :global(.mdi) {
+    display: flex;
+    align-items: center;
+    font-size: 18px;
+    vertical-align: 0;
+  }
+  .library-import:hover {
+    background: #2c3441;
+    border-color: #65738a;
+    color: #edf3ff;
+  }
+  .library-import:focus-visible {
+    outline: 2px solid #97bdff;
+    outline-offset: 3px;
+    box-shadow: none;
+  }
+  .library-import:active {
+    background: #354157;
+    border-color: #8093b0;
+  }
+  .library-tools .dropdown-menu {
+    --bs-dropdown-bg: #242b36;
+    --bs-dropdown-color: #d8e2f2;
+    --bs-dropdown-border-color: #4c586c;
+    --bs-dropdown-link-color: #d8e2f2;
+    --bs-dropdown-link-hover-bg: #354157;
+    --bs-dropdown-link-hover-color: #fff;
+    --bs-dropdown-header-color: #9daabd;
+    --bs-dropdown-divider-bg: #3a4454;
+    font-size: 13px;
+  }
+  .library-notice {
+    margin: 0 28px 16px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
   .make-default {
     margin-right: auto;
+  }
+  .default-button {
+    color: #9daabd;
+    font-size: 12px;
+  }
+  .default-button:hover {
+    color: #d8e2f2;
+    background: #2b3545;
+  }
+  .open-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border: 1px solid #6597f4;
+    border-radius: 7px;
+    color: #fff;
+    background: #4a83ed;
+    font-size: 13px;
+  }
+  .open-button:hover {
+    color: #fff;
+    background: #6197fa;
+  }
+  .open-button:disabled {
+    opacity: 0.4;
+  }
+  @media (max-width: 600px) {
+    .library-toolbar {
+      padding: 16px 16px 20px;
+      gap: 12px;
+    }
+    .library-summary {
+      width: 100%;
+    }
+    .library-tools {
+      width: 100%;
+      justify-content: flex-end;
+    }
+    .library-tools .btn {
+      min-height: 40px;
+    }
+    .library-refresh {
+      margin-right: auto;
+    }
+    .library-notice {
+      margin-inline: 16px;
+    }
+    .storage-status {
+      flex-wrap: wrap;
+    }
   }
 </style>
