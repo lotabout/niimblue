@@ -10,6 +10,7 @@
   import { iconCodepoints, type MaterialIcon } from "$/styles/mdi_icons";
   import { appConfig, automation, connectionState, csvData, loadedFonts, printerMeta } from "$/stores/app";
   import {
+    ExportedLabelTemplateSchema,
     type ExportedLabelTemplate,
     type FabricJson,
     type LabelProps,
@@ -37,11 +38,26 @@
   import { DEFAULT_LABEL_PROPS, GRID_SIZE, OBJECT_DEFAULTS } from "$/defaults";
   import { LabelDesignerUtils } from "$/utils/label_designer_utils";
   import SavedLabelsMenu from "$/components/dialogs/SavedLabelsMenu.svelte";
+  import SaveLabelDialog from "$/components/dialogs/SaveLabelDialog.svelte";
+  import {
+    createLabelDocument,
+    labelFingerprint,
+    restoreLabelDocument,
+    type LabelDocumentState,
+  } from "$/utils/label_document";
   import { CustomCanvas } from "$/fabric-object/custom_canvas";
   import VectorParamsControls from "$/components/designer-controls/VectorParamsControls.svelte";
   import { CanvasUtils } from "$/utils/canvas_utils";
 
-  type DialogName = "none" | "preview" | "label_props" | "saved_labels" | "csv_props" | "icon_picker" | "object_picker";
+  type DialogName =
+    | "none"
+    | "preview"
+    | "label_props"
+    | "saved_labels"
+    | "save_label"
+    | "csv_props"
+    | "icon_picker"
+    | "object_picker";
 
   interface Props {
     brand: Snippet;
@@ -65,11 +81,16 @@
   let undoState = $state<UndoState>({ undoDisabled: false, redoDisabled: false });
   let zoomText = $state<string>("100%");
   let hasUnsavedChanges = $state<boolean>(false);
-  let hasSavedLabel = $state(false);
+  let documentState = $state<LabelDocumentState>({ title: "", baseline: "" });
+  let documentReady = $state(false);
+  let loadingDocument = $state(false);
+  let contentRevision = $state(0);
+  let saveAs = $state(false);
+  let draftSaveFailed = $state(false);
+  let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let stageWidth = $state(0);
   let stageHeight = $state(0);
   let autoFit = $state(false);
-  let labelTitle = $state("");
   const dpmm = $derived(labelProps.dpmm ?? ($printerMeta?.dpi === 300 ? 11.81 : 8));
   const labelWidth = $derived(Number((labelProps.size.width / dpmm).toFixed(1)));
   const labelHeight = $derived(Number((labelProps.size.height / dpmm).toFixed(1)));
@@ -130,20 +151,61 @@
     discardSelection();
   };
 
-  const loadLabelData = async (data: ExportedLabelTemplate) => {
-    undo.paused = true;
-    onUpdateLabelProps(data.label);
-    if (data.csv) {
-      $csvData = data.csv;
-      csvEnabled = true;
+  const snapshotCurrentLabel = (): ExportedLabelTemplate =>
+    ExportedLabelTemplateSchema.parse(
+      JSON.parse(
+        JSON.stringify({
+          title: documentState.title,
+          label: labelProps,
+          canvas: fabricCanvas!.toJSON(),
+          csv: csvEnabled ? $csvData : undefined,
+        }),
+      ),
+    );
+
+  const markDocumentChanged = () => {
+    if (!loadingDocument) contentRevision++;
+  };
+
+  const pushUndo = () => {
+    undo.push(fabricCanvas!, labelProps, csvEnabled ? $csvData : undefined);
+  };
+
+  const flushDraft = () => {
+    clearTimeout(draftTimer);
+    if (!documentReady || loadingDocument) return;
+    try {
+      LocalStoragePersistence.saveLabelDraft({
+        version: 1,
+        label: snapshotCurrentLabel(),
+        document: documentState,
+        csvData: $csvData,
+      });
+      draftSaveFailed = false;
+    } catch {
+      if (!draftSaveFailed) Toasts.error($tr("workspace.draft.failed"));
+      draftSaveFailed = true;
     }
-    await FileUtils.loadCanvasState(fabricCanvas!, data.canvas);
-    undo.paused = false;
+  };
+
+  const loadLabelData = async (data: ExportedLabelTemplate) => {
+    loadingDocument = true;
+    undo.paused = true;
+    try {
+      onUpdateLabelProps(JSON.parse(JSON.stringify(data.label)));
+      csvEnabled = !!data.csv;
+      $csvData = data.csv ? { ...data.csv } : { data: "" };
+      await FileUtils.loadCanvasState(fabricCanvas!, JSON.parse(JSON.stringify(data.canvas)));
+      discardSelection();
+    } finally {
+      undo.paused = false;
+      loadingDocument = false;
+    }
   };
 
   undo.onLabelUpdate = async (data) => {
     await loadLabelData(data);
-    hasUnsavedChanges = true;
+    markDocumentChanged();
   };
 
   undo.onStateUpdate = (state: UndoState) => {
@@ -156,18 +218,25 @@
   };
 
   const cloneSelected = () => {
-    LabelDesignerUtils.cloneSelection(fabricCanvas!).then(() => undo.push(fabricCanvas!, labelProps));
+    LabelDesignerUtils.cloneSelection(fabricCanvas!).then(() => pushUndo());
   };
 
   const moveSelected = (direction: MoveDirection, ctrl?: boolean) => {
     LabelDesignerUtils.moveSelection(fabricCanvas!, direction, ctrl);
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
     const key: string = e.key.toLowerCase();
     // windows and linux users are used to ctrl, mac users use cmd
     const cmdOrCtrl = e.metaKey || e.ctrlKey;
+
+    if (cmdOrCtrl && key === "s") {
+      e.preventDefault();
+      if (!e.repeat) requestSave(e.shiftKey);
+      return;
+    }
+    if (!documentReady || loadingDocument || currentDialog !== "none") return;
 
     // Esc
     if (key === "escape") {
@@ -227,38 +296,104 @@
 
   const onUpdateLabelProps = (newProps: LabelProps) => {
     labelProps = newProps;
-    hasUnsavedChanges = true;
+    markDocumentChanged();
     fabricCanvas!.setDimensions(labelProps.size);
     fabricCanvas!.virtualZoom(fabricCanvas!.getVirtualZoom());
     try {
       LocalStoragePersistence.saveLastLabelProps(labelProps);
-      undo.push(fabricCanvas!, labelProps);
+      pushUndo();
     } catch (e) {
       Toasts.zodErrors(e, "Label parameters save error:");
     }
   };
 
-  const exportCurrentLabel = (): ExportedLabelTemplate => {
-    return FileUtils.makeExportedLabel(fabricCanvas!, labelProps, csvEnabled);
-  };
+  const exportCurrentLabel = (): ExportedLabelTemplate => ({
+    ...FileUtils.makeExportedLabel(fabricCanvas!, labelProps, csvEnabled),
+    title: documentState.title,
+  });
 
-  const onLoadRequested = (label: ExportedLabelTemplate) => {
-    labelTitle = label.title ?? "";
-    hasSavedLabel = true;
-    loadLabelData(label).then(() => {
-      undo.push(fabricCanvas!, labelProps);
+  const onLoadRequested = async (label: ExportedLabelTemplate): Promise<boolean> => {
+    if (loadingDocument) return false;
+    const previous = documentReady ? snapshotCurrentLabel() : undefined;
+    try {
+      await loadLabelData(label);
+      const normalized = { ...snapshotCurrentLabel(), title: label.title ?? "" };
+      documentState = createLabelDocument(normalized, label.id);
+      undo.reset();
+      pushUndo();
       hasUnsavedChanges = false;
-    });
+      markDocumentChanged();
+      return true;
+    } catch (e) {
+      Toasts.error(e);
+      if (previous) {
+        try {
+          await loadLabelData(previous);
+        } catch (restoreError) {
+          Toasts.error(restoreError);
+        }
+      }
+      return false;
+    }
   };
 
-  const onSave = () => {
-    hasSavedLabel = true;
-    hasUnsavedChanges = false;
+  const saveCurrentLabel = (title: string, asCopy: boolean): boolean => {
+    try {
+      const label = { ...exportCurrentLabel(), title };
+      const saved = LocalStoragePersistence.saveLabel(label, asCopy ? undefined : documentState.id);
+      documentState = createLabelDocument(saved, saved.id);
+      pushUndo();
+      hasUnsavedChanges = false;
+      flushDraft();
+      Toasts.message($tr("workspace.save.success"));
+      return true;
+    } catch (e) {
+      Toasts.error(e);
+      return false;
+    }
+  };
+
+  const requestSave = (asCopy = false) => {
+    if (!documentReady || loadingDocument || currentDialog !== "none") return;
+    try {
+      if (documentState.id && !LocalStoragePersistence.loadLabel(documentState.id)) {
+        documentState = { title: documentState.title, baseline: "" };
+      }
+      if (asCopy || !documentState.id || !documentState.title.trim()) {
+        saveAs = asCopy;
+        currentDialog = "save_label";
+      } else {
+        saveCurrentLabel(documentState.title, false);
+      }
+    } catch (e) {
+      Toasts.error(e);
+    }
+  };
+
+  const onLabelDeleted = (id: string) => {
+    if (id !== documentState.id) return;
+    documentState = { title: documentState.title, baseline: "" };
+    markDocumentChanged();
+    flushDraft();
+  };
+
+  const newDocument = async () => {
+    if (!documentReady || loadingDocument) return;
+    if (hasUnsavedChanges && !confirm($tr("workspace.new.confirm"))) return;
+    try {
+      const template = LocalStoragePersistence.loadDefaultTemplate();
+      const label: ExportedLabelTemplate = template
+        ? { ...template, id: undefined }
+        : { label: DEFAULT_LABEL_PROPS, canvas: { version: fabric.version, objects: [] } };
+      if (await onLoadRequested(label)) flushDraft();
+    } catch (e) {
+      Toasts.error(e);
+    }
   };
 
   const zplImageReady = async (img: Blob) => {
     await LabelDesignerObjectHelper.addImageBlob(fabricCanvas!, img);
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
   };
 
   const pdfImageReady = async (el: HTMLCanvasElement) => {
@@ -270,7 +405,7 @@
 
     fabricCanvas!.add(img);
     fabricCanvas!.setActiveObject(img);
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
   };
 
   const onObjectPicked = async (objectType: OjectType) => {
@@ -285,7 +420,7 @@
     }
     if (obj !== undefined) {
       fabricCanvas!.setActiveObject(obj);
-      undo.push(fabricCanvas!, labelProps);
+      pushUndo();
     }
   };
 
@@ -295,12 +430,12 @@
       fontFamily: "Material Icons",
       fontSize: 100,
     });
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
   };
 
   const onSvgIconPicked = (i: string) => {
     LabelDesignerObjectHelper.addSvg(fabricCanvas!, i);
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
   };
 
   const openPreview = () => {
@@ -314,11 +449,11 @@
   };
 
   const controlValueUpdated = () => {
-    hasUnsavedChanges = true;
+    markDocumentChanged();
     if (selectedObject) {
       selectedObject.setCoords();
       selectedObject.dirty = true;
-      undo.push(fabricCanvas!, labelProps);
+      pushUndo();
     }
     fabricCanvas!.requestRenderAll();
 
@@ -337,7 +472,7 @@
       originY: "top",
     });
     fabricCanvas!.setActiveObject(obj);
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
   };
 
   const onPaste = async (event: ClipboardEvent) => {
@@ -356,7 +491,7 @@
 
       if (obj !== undefined) {
         fabricCanvas!.setActiveObject(obj);
-        undo.push(fabricCanvas!, labelProps);
+        pushUndo();
       }
     }
   };
@@ -365,7 +500,7 @@
     if (!confirm($tr("editor.clear.confirm"))) {
       return;
     }
-    undo.push(fabricCanvas!, labelProps);
+    pushUndo();
     fabricCanvas!.clear();
   };
 
@@ -380,9 +515,11 @@
       const urlTemplate = await FileUtils.readLabelFromUrl();
 
       if (urlTemplate !== null && confirm($tr("params.saved_labels.load.url.warn"))) {
-        onLoadRequested(urlTemplate);
-        Toasts.message($tr("params.saved_labels.load.url.loaded"));
-        return true;
+        if (documentReady && hasUnsavedChanges && !confirm($tr("editor.warning.load"))) return false;
+        if (await onLoadRequested({ ...urlTemplate, id: undefined })) {
+          Toasts.message($tr("params.saved_labels.load.url.loaded"));
+          return true;
+        }
       }
     } catch (e) {
       Toasts.error(e);
@@ -398,17 +535,38 @@
     }
 
     try {
-      const defaultTemplate = LocalStoragePersistence.loadDefaultTemplate();
-
-      if (defaultTemplate !== null) {
-        onLoadRequested(defaultTemplate);
+      const draft = LocalStoragePersistence.loadLabelDraft();
+      if (draft) {
+        await loadLabelData(draft.label);
+        if (draft.csvData) $csvData = draft.csvData;
+        let original: ExportedLabelTemplate | null = null;
+        try {
+          original = draft.document.id ? LocalStoragePersistence.loadLabel(draft.document.id) : null;
+        } catch (e) {
+          // The working copy is still recoverable even if the original is damaged.
+          Toasts.error(e);
+        }
+        documentState = restoreLabelDocument(draft, original);
+        hasUnsavedChanges = labelFingerprint(snapshotCurrentLabel()) !== documentState.baseline;
+        if (hasUnsavedChanges || !documentState.id) Toasts.message($tr("workspace.draft.restored"));
         return;
       }
     } catch (e) {
       Toasts.error(e);
     }
 
+    try {
+      const defaultTemplate = LocalStoragePersistence.loadDefaultTemplate();
+
+      if (defaultTemplate !== null) {
+        if (await onLoadRequested({ ...defaultTemplate, id: undefined })) return;
+      }
+    } catch (e) {
+      Toasts.error(e);
+    }
+
     LabelDesignerObjectHelper.addText(fabricCanvas!, $tr("editor.default_text"));
+    documentState = createLabelDocument(snapshotCurrentLabel());
   };
 
   const renderOnFontsChanged = () => {
@@ -444,9 +602,11 @@
 
     window.addEventListener("hashchange", loadLabelFromUrl);
     window.addEventListener("beforeunload", warnBeforeUnload);
+    window.addEventListener("pagehide", flushDraft);
+    document.addEventListener("visibilitychange", flushHiddenDraft);
 
-    undo.push(fabricCanvas, labelProps);
-    hasUnsavedChanges = false;
+    pushUndo();
+    documentReady = true;
 
     // force close dropdowns on touch devices
     fabricCanvas.on("mouse:down", (): void => {
@@ -464,9 +624,9 @@
     });
 
     fabricCanvas.on("object:modified", (): void => {
-      hasUnsavedChanges = true;
+      markDocumentChanged();
       editRevision++;
-      undo.push(fabricCanvas!, labelProps);
+      pushUndo();
     });
 
     fabricCanvas.on("object:resizing", (): void => {
@@ -474,17 +634,19 @@
     });
 
     fabricCanvas.on("object:added", (): void => {
-      hasUnsavedChanges = true;
+      markDocumentChanged();
     });
 
     fabricCanvas.on("text:changed", () => {
-      hasUnsavedChanges = true;
+      markDocumentChanged();
       editRevision++;
     });
 
+    fabricCanvas.on("text:editing:exited", pushUndo);
+
     fabricCanvas.on("object:removed", (): void => {
-      hasUnsavedChanges = true;
-      undo.push(fabricCanvas!, labelProps);
+      markDocumentChanged();
+      pushUndo();
     });
 
     fabricCanvas.on("selection:created", (e): void => {
@@ -526,7 +688,7 @@
         }
 
         if (dropped) {
-          undo.push(fabricCanvas!, labelProps);
+          pushUndo();
         }
       }
     });
@@ -555,16 +717,36 @@
     }
   });
 
+  const flushHiddenDraft = () => {
+    if (document.visibilityState === "hidden") flushDraft();
+  };
+
   const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+    flushDraft();
     if (!hasUnsavedChanges) return;
     event.preventDefault();
     event.returnValue = "";
   };
 
   onDestroy(() => {
-    fabricCanvas!.dispose();
+    flushDraft();
+    clearTimeout(draftTimer);
+    fabricCanvas?.dispose();
     window.removeEventListener("hashchange", loadLabelFromUrl);
     window.removeEventListener("beforeunload", warnBeforeUnload);
+    window.removeEventListener("pagehide", flushDraft);
+    document.removeEventListener("visibilitychange", flushHiddenDraft);
+  });
+
+  $effect(() => {
+    void contentRevision;
+    void csvEnabled;
+    void $csvData;
+    void documentState;
+    if (!documentReady || loadingDocument) return;
+    hasUnsavedChanges = labelFingerprint(snapshotCurrentLabel()) !== documentState.baseline;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(flushDraft, 400);
   });
 
   $effect(() => {
@@ -590,21 +772,48 @@
   <div class="document-bar">
     <div class="document-info">
       {@render brand()}
-      {#if labelTitle}<span class="document-name" title={labelTitle}>{labelTitle}</span>{/if}
-      <span class="save-status" class:has-changes={hasUnsavedChanges} role="status">
+      <span class="document-name" title={documentState.title || $tr("workspace.document.untitled")}>
+        {documentState.title || $tr("workspace.document.untitled")}
+      </span>
+      <span
+        class="save-status"
+        class:has-changes={hasUnsavedChanges || !documentState.id}
+        class:text-danger={draftSaveFailed}
+        role="status">
         <span></span>
-        {hasUnsavedChanges ? $tr("workspace.unsaved") : hasSavedLabel ? $tr("workspace.saved") : $tr("workspace.local")}
+        {draftSaveFailed
+          ? $tr("workspace.draft.failed")
+          : !documentState.id
+            ? $tr("workspace.never_saved")
+            : hasUnsavedChanges
+              ? $tr("workspace.unsaved")
+              : $tr("workspace.saved")}
       </span>
     </div>
     <div class="document-actions">
-      <button class="btn studio-quiet library-button" onclick={() => (currentDialog = "saved_labels")}>
+      <button
+        class="btn studio-quiet library-button"
+        disabled={loadingDocument}
+        onclick={() => (currentDialog = "saved_labels")}>
         <MdIcon icon="folder_open" />
         {$tr("workspace.library")}
       </button>
-      <button class="btn studio-secondary" onclick={() => (currentDialog = "saved_labels")}>
-        <MdIcon icon="save" />
-        {$tr("workspace.save")}
-      </button>
+      <div class="btn-group document-save">
+        <button class="btn studio-secondary" onclick={() => requestSave()} disabled={!documentReady || loadingDocument}>
+          <MdIcon icon="save" />
+          {$tr("workspace.save")}
+        </button>
+        <button
+          class="btn studio-secondary dropdown-toggle dropdown-toggle-split"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          aria-label={$tr("workspace.document.actions")}
+          disabled={!documentReady || loadingDocument}></button>
+        <ul class="dropdown-menu">
+          <li><button class="dropdown-item" onclick={() => requestSave(true)}>{$tr("workspace.save_as")}</button></li>
+          <li><button class="dropdown-item" onclick={newDocument}>{$tr("workspace.new")}</button></li>
+        </ul>
+      </div>
       <span class="action-divider"></span>
       <button class="btn studio-secondary" onclick={openPreview}>
         <MdIcon icon="visibility" />
@@ -797,7 +1006,10 @@
             <span class="field-caption">{$tr("workspace.appearance")}</span>
             <div class="property-controls">
               {#if selectedObject instanceof LabelBorder}
-                <BorderParamsControls selectedBorder={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
+                <BorderParamsControls
+                  selectedBorder={selectedObject}
+                  {editRevision}
+                  valueUpdated={controlValueUpdated} />
               {/if}
               {#if selectedObject instanceof fabric.IText}
                 <TextParamsControls selectedText={selectedObject} {editRevision} valueUpdated={controlValueUpdated} />
@@ -877,16 +1089,23 @@
   {:else if currentDialog === "saved_labels"}
     <SavedLabelsMenu
       onClose={() => (currentDialog = "none")}
-      {onSave}
+      onDelete={onLabelDeleted}
       canvas={fabricCanvas!}
       onRequestLabelTemplate={exportCurrentLabel}
       {onLoadRequested}
       {csvEnabled}
       {hasUnsavedChanges} />
+  {:else if currentDialog === "save_label"}
+    <SaveLabelDialog
+      initialTitle={documentState.title}
+      {saveAs}
+      onSave={(title) => saveCurrentLabel(title, saveAs)}
+      onClose={() => (currentDialog = "none")} />
   {:else if currentDialog === "csv_props"}
     <CsvControl
       onClose={() => (currentDialog = "none")}
       bind:enabled={csvEnabled}
+      onChange={pushUndo}
       onPlaceholderPicked={onCsvPlaceholderPicked} />
   {:else if currentDialog === "icon_picker"}
     <IconPicker onSubmit={onIconPicked} onSubmitSvg={onSvgIconPicked} onClose={() => (currentDialog = "none")} />
@@ -928,6 +1147,7 @@
     min-width: 0;
   }
   .document-name {
+    min-width: 0;
     max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -936,6 +1156,7 @@
     font-size: 12px;
   }
   .save-status {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -966,7 +1187,8 @@
     border-radius: 5px;
     font-size: 12px;
   }
-  .document-actions > .btn {
+  .document-actions > .btn,
+  .document-save > .btn {
     padding: 6px 11px;
     white-space: nowrap;
   }
@@ -1387,23 +1609,36 @@
   }
 
   @media (max-width: 1100px) {
+    .image-editor {
+      grid-template-rows: 88px minmax(0, 1fr) 32px;
+    }
     .document-bar {
-      gap: 10px;
-      padding: 0 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: 40px 40px;
+      padding: 4px 12px;
+      gap: 0 10px;
     }
     .document-info {
       gap: 10px;
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .document-actions {
+      grid-column: 1 / -1;
+      grid-row: 2;
     }
     .document-name {
       max-width: 100px;
     }
     .document-actions .library-button {
-      display: none;
+      display: inline-block;
     }
     .document-actions > .btn {
       padding: 6px 9px;
     }
     .device-controls {
+      grid-column: 2;
+      grid-row: 1;
       padding-left: 10px;
     }
     .workspace-layout {
@@ -1442,7 +1677,7 @@
       grid-row: 1;
     }
     .save-status {
-      display: none;
+      display: flex;
     }
     .workspace-layout {
       grid-template-columns: 68px minmax(0, 1fr);
@@ -1510,7 +1745,8 @@
       width: 100%;
       gap: 6px;
     }
-    .document-actions > .btn {
+    .document-actions > .btn,
+    .document-actions > .document-save {
       flex: 1;
       font-size: 11px;
       padding: 6px 7px;

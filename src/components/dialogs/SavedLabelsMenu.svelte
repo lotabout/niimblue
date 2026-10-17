@@ -14,20 +14,20 @@
 
   interface Props {
     onRequestLabelTemplate: () => ExportedLabelTemplate;
-    onLoadRequested: (label: ExportedLabelTemplate) => void;
+    onLoadRequested: (label: ExportedLabelTemplate) => Promise<boolean>;
     onClose?: () => void;
-    onSave?: () => void;
+    onDelete: (id: string) => void;
     canvas: fabric.Canvas;
     csvEnabled: boolean;
     hasUnsavedChanges: boolean;
   }
 
-  let { onRequestLabelTemplate, onLoadRequested, canvas, csvEnabled, onClose, onSave, hasUnsavedChanges }: Props =
+  let { onRequestLabelTemplate, onLoadRequested, canvas, csvEnabled, onClose, onDelete, hasUnsavedChanges }: Props =
     $props();
 
   let savedLabels = $state<ExportedLabelTemplate[]>([]);
   let selectedIndex = $state<number>(-1);
-  let title = $state<string>("");
+  let loading = $state(false);
   let usedSpace = $state<number>(0);
   let customDefaultTemplate = $state<boolean>(LocalStoragePersistence.hasCustomDefaultTemplate());
   let isStandalone = Utils.getAvailableTransports().capacitorBle;
@@ -38,8 +38,7 @@
   };
 
   const onLabelSelected = (index: number) => {
-    selectedIndex = index;
-    title = savedLabels[index]?.title ?? "";
+    if (!loading) selectedIndex = index;
   };
 
   const onLabelExport = (idx: number) => {
@@ -51,99 +50,57 @@
   };
 
   const onLabelDelete = (idx: number) => {
-    selectedIndex = -1;
-    const result = [...savedLabels];
-    result.splice(idx, 1);
-    LocalStoragePersistence.saveLabels(result);
-
-    savedLabels = result;
-    title = "";
-    calcUsedSpace();
-  };
-
-  const saveLabels = (labels: ExportedLabelTemplate[]) => {
-    const { zodErrors, otherErrors } = LocalStoragePersistence.saveLabels(labels);
-    zodErrors.forEach((e) => Toasts.zodErrors(e, "Label save error"));
-    otherErrors.forEach((e) => Toasts.error(e));
-
-    if (zodErrors.length === 0 && otherErrors.length === 0) {
-      savedLabels = labels;
+    try {
+      const id = savedLabels[idx].id!;
+      LocalStoragePersistence.deleteLabel(id);
+      savedLabels = savedLabels.filter((_, index) => index !== idx);
+      selectedIndex = -1;
+      onDelete(id);
+      calcUsedSpace();
+    } catch (e) {
+      Toasts.error(e);
     }
-
-    calcUsedSpace();
-    onSave?.();
-  };
-
-  const onSaveReplaceClicked = () => {
-    if (selectedIndex === -1) {
-      return;
-    }
-
-    if (!confirm($tr("editor.warning.save"))) {
-      return;
-    }
-
-    const label = onRequestLabelTemplate();
-    label.title = title;
-
-    const result = [...savedLabels];
-    result[selectedIndex] = label;
-
-    saveLabels(result);
   };
 
   const onMakeDefaultClicked = () => {
-    const label = onRequestLabelTemplate();
-    label.title = title;
-    label.thumbnailBase64 = undefined;
-    LocalStoragePersistence.saveDefaultTemplate(label);
-    customDefaultTemplate = true;
-    calcUsedSpace();
-    onSave?.();
+    try {
+      const label = onRequestLabelTemplate();
+      label.thumbnailBase64 = undefined;
+      LocalStoragePersistence.saveDefaultTemplate(label);
+      customDefaultTemplate = true;
+      calcUsedSpace();
+    } catch (e) {
+      Toasts.error(e);
+    }
   };
 
   const onRemoveDefaultClicked = () => {
-    LocalStoragePersistence.saveDefaultTemplate(undefined);
-    customDefaultTemplate = false;
-    calcUsedSpace();
-  };
-
-  const onSaveClicked = () => {
-    const label = onRequestLabelTemplate();
-    label.title = title;
-    const result = [...savedLabels, label];
-    saveLabels(result);
-  };
-
-  const onLoadClicked = () => {
-    if (selectedIndex === -1) {
-      return;
+    try {
+      LocalStoragePersistence.saveDefaultTemplate(undefined);
+      customDefaultTemplate = false;
+      calcUsedSpace();
+    } catch (e) {
+      Toasts.error(e);
     }
+  };
 
+  const onLoadClicked = async () => {
+    if (selectedIndex === -1 || loading) return;
     const label = savedLabels[selectedIndex];
-
-    let message = "";
-
-    if (hasUnsavedChanges) {
-      message = $tr("editor.warning.load");
+    let message = hasUnsavedChanges ? $tr("editor.warning.load") : "";
+    if (label.csv) message += "\n" + $tr("editor.warning.load.csv");
+    if (message && !confirm(message)) return;
+    loading = true;
+    try {
+      if (await onLoadRequested(label)) modalRef.hide();
+    } finally {
+      loading = false;
     }
-
-    if (label.csv) {
-      if (message) {
-        message += "\n";
-      }
-      message += "\n" + $tr("editor.warning.load.csv");
-    }
-
-    if (message && !confirm(message)) {
-      return;
-    }
-
-    onLoadRequested(label);
-    modalRef.hide();
   };
 
   const onImportClicked = async () => {
+    if (loading) return;
+    loading = true;
     try {
       const contents = await FileUtils.pickAndReadSingleTextFile("json");
       const rawData = JSON.parse(contents);
@@ -155,14 +112,9 @@
       }
 
       const { zodErrors, otherErrors } = LocalStoragePersistence.appendLabels(items);
-
       zodErrors.forEach((e) => Toasts.zodErrors(e, "Label import error:"));
       otherErrors.forEach((e) => Toasts.error(e));
-
-      if (zodErrors.length !== 0 || otherErrors.length !== 0) {
-        return;
-      }
-
+      if (zodErrors.length !== 0 || otherErrors.length !== 0) return;
       savedLabels = LocalStoragePersistence.loadLabels();
       selectedIndex = -1;
       calcUsedSpace();
@@ -178,17 +130,18 @@
       } else {
         Toasts.error(e);
       }
+    } finally {
+      loading = false;
     }
   };
 
   const onExportClicked = () => {
     try {
       const label = onRequestLabelTemplate();
-      if (title) {
-        label.title = title.replaceAll(/[\\/:*?"<>|]/g, "_");
+      if (label.title) {
+        label.title = label.title.replaceAll(/[\\/:*?"<>|]/g, "_");
       }
       FileUtils.saveLabelAsJson(label);
-      onSave?.();
     } catch (e) {
       Toasts.zodErrors(e, "Canvas save error:");
     }
@@ -197,7 +150,6 @@
   const onExportAllClicked = () => {
     try {
       FileUtils.saveLabelsAsJson(savedLabels);
-      onSave?.();
     } catch (e) {
       if (e instanceof z.ZodError) {
         Toasts.zodErrors(e, "Labels export error:");
@@ -226,7 +178,6 @@
 
       navigator.clipboard.writeText(url);
       Toasts.message($tr("params.saved_labels.save.url.copied"));
-      onSave?.();
     } catch (e) {
       Toasts.error(e);
     }
@@ -238,7 +189,7 @@
   });
 </script>
 
-<AppModal title={$tr("params.saved_labels.menu_title")} {onClose} bind:this={modalRef}>
+<AppModal title={$tr("workspace.library")} {onClose} bind:this={modalRef}>
   <div class="mb-1">
     {usedSpace}
     {$tr("params.saved_labels.kb_used")}
@@ -251,7 +202,7 @@
   </div>
 
   <div class="mb-1">
-    <button class="btn btn-sm btn-outline-secondary" onclick={onImportClicked}>
+    <button class="btn btn-sm btn-outline-secondary" disabled={loading} onclick={onImportClicked}>
       <MdIcon icon="data_object" />
       {$tr("params.saved_labels.load.json")}
     </button>
@@ -259,6 +210,7 @@
       <button
         type="button"
         class="btn btn-outline-secondary dropdown-toggle"
+        disabled={loading}
         data-bs-toggle="dropdown"
         aria-expanded="false">
         <MdIcon icon="data_object" />
@@ -302,15 +254,6 @@
     onItemDelete={onLabelDelete}
     onItemExport={onLabelExport} />
 
-  <div class="input-group flex-nowrap input-group-sm">
-    <span class="input-group-text">{$tr("params.saved_labels.label_title")}</span>
-    <input
-      class="form-control"
-      type="text"
-      placeholder={$tr("params.saved_labels.label_title.placeholder")}
-      bind:value={title} />
-  </div>
-
   {#snippet footer()}
     <div class="btn-group btn-group-sm make-default">
       <button class="btn text-secondary" onclick={onMakeDefaultClicked}>
@@ -323,18 +266,8 @@
       {/if}
     </div>
 
-    <button class="btn btn-sm btn-secondary" onclick={onSaveClicked}>
-      <MdIcon icon="save" />
-      {$tr("params.saved_labels.save.browser")}
-    </button>
-
     {#if selectedIndex !== -1}
-      <button class="btn btn-sm btn-secondary" onclick={onSaveReplaceClicked}>
-        <MdIcon icon="edit_note" />
-        {$tr("params.saved_labels.save.browser.replace")}
-      </button>
-
-      <button class="btn btn-sm btn-primary" onclick={onLoadClicked}>
+      <button class="btn btn-sm btn-primary" onclick={onLoadClicked} disabled={loading}>
         <MdIcon icon="folder" />
         {$tr("params.saved_labels.load.browser")}
       </button>

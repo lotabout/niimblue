@@ -1,5 +1,6 @@
 import {
   AutomationPropsSchema,
+  CsvParamsSchema,
   ExportedLabelTemplateSchema,
   FabricJsonSchema,
   LabelPresetSchema,
@@ -13,15 +14,22 @@ import {
   type PreviewProps,
 } from "$/types";
 import { z } from "zod";
-import { FileUtils } from "$/utils/file_utils";
+import type { LabelDraft } from "./label_document";
 import { get, writable, type Updater, type Writable } from "svelte/store";
 
+const LabelDraftSchema = z.object({
+  version: z.literal(1),
+  label: ExportedLabelTemplateSchema.omit({ id: true }),
+  csvData: CsvParamsSchema.optional(),
+  document: z.object({
+    id: z.string().startsWith("saved_label_").optional(),
+    title: z.string(),
+    baseline: z.string(),
+  }),
+});
+
 /** Writable store, value is persisted to localStorage */
-export function writablePersisted<T>(
-  key: string,
-  schema: z.ZodType<T>,
-  initialValue: T,
-): Writable<T> {
+export function writablePersisted<T>(key: string, schema: z.ZodType<T>, initialValue: T): Writable<T> {
   const wr = writable<T>(initialValue);
 
   try {
@@ -93,11 +101,7 @@ export class LocalStoragePersistence {
     return schema.parse(data);
   }
 
-  static validateAndSaveObject<T>(
-    key: string,
-    data: any,
-    schema: z.ZodType<T>,
-  ): void {
+  static validateAndSaveObject<T>(key: string, data: any, schema: z.ZodType<T>): void {
     if (data === null || data === undefined) {
       this.saveObject(key, data);
       return;
@@ -132,6 +136,37 @@ export class LocalStoragePersistence {
     return `${basename}_${counter}`;
   }
 
+  static loadLabel(id: string): ExportedLabelTemplate | null {
+    if (!id.startsWith("saved_label_")) throw new Error("Invalid label ID");
+    const label = this.loadAndValidateObject(id, ExportedLabelTemplateSchema.omit({ id: true }));
+    return label ? { ...label, id } : null;
+  }
+
+  static saveLabel(label: ExportedLabelTemplate, id?: string): ExportedLabelTemplate {
+    const parsed = ExportedLabelTemplateSchema.omit({ id: true }).parse(label);
+    parsed.timestamp = Math.floor(Date.now() / 1000);
+    if (id && (!id.startsWith("saved_label_") || localStorage.getItem(id) === null)) {
+      throw new Error("The original label no longer exists. Save it as a new label.");
+    }
+    const key = id ?? this.createUidForLabel(parsed);
+    // One atomic storage write: a failed save leaves the original and other labels intact.
+    this.saveObject(key, parsed);
+    return { ...parsed, id: key };
+  }
+
+  static deleteLabel(id: string) {
+    if (!id.startsWith("saved_label_")) throw new Error("Invalid label ID");
+    localStorage.removeItem(id);
+  }
+
+  static loadLabelDraft(): LabelDraft | null {
+    return this.loadAndValidateObject("label_workspace_draft", LabelDraftSchema);
+  }
+
+  static saveLabelDraft(draft: LabelDraft) {
+    this.validateAndSaveObject("label_workspace_draft", draft, LabelDraftSchema);
+  }
+
   static appendLabels(labels: ExportedLabelTemplate[]): {
     zodErrors: z.ZodError[];
     otherErrors: Error[];
@@ -144,7 +179,7 @@ export class LocalStoragePersistence {
       try {
         const parsed = ExportedLabelTemplateSchema.omit({ id: true }).parse(label);
         if (parsed.timestamp === undefined) {
-          parsed.timestamp = FileUtils.timestamp();
+          parsed.timestamp = Math.floor(Date.now() / 1000);
         }
         parsedLabels.push(parsed);
       } catch (e) {
@@ -181,61 +216,12 @@ export class LocalStoragePersistence {
     return { zodErrors, otherErrors };
   }
 
-  static saveLabels(labels: ExportedLabelTemplate[]): {
-    zodErrors: z.ZodError[];
-    otherErrors: Error[];
-  } {
-    const zodErrors: z.ZodError[] = [];
-    const otherErrors: Error[] = [];
-
-    Object.keys(localStorage).forEach((key) => {
-      if (key.startsWith("saved_label")) {
-        localStorage.removeItem(key);
-      }
-    });
-
-    labels.forEach((label) => {
-      try {
-        if (label.timestamp === undefined) {
-          label.timestamp = FileUtils.timestamp();
-        }
-
-        const basename = `saved_label_${label.timestamp}`;
-        let counter = 0;
-
-        while (`${basename}_${counter}` in localStorage) {
-          counter++;
-        }
-
-        this.validateAndSaveObject(
-          this.createUidForLabel(label),
-          label,
-          ExportedLabelTemplateSchema.omit({ id: true }),
-        );
-      } catch (e) {
-        if (e instanceof z.ZodError) {
-          zodErrors.push(e);
-        }
-        if (e instanceof Error) {
-          otherErrors.push(e);
-        }
-      }
-    });
-    return { zodErrors, otherErrors };
-  }
-
   /**
    * @throws {z.ZodError}
    */
   static loadLabels(): ExportedLabelTemplate[] {
-    const legacyLabel = this.loadAndValidateObject(
-      "saved_canvas_props",
-      LabelPropsSchema,
-    );
-    const legacyCanvas = this.loadAndValidateObject(
-      "saved_canvas_data",
-      FabricJsonSchema,
-    );
+    const legacyLabel = this.loadAndValidateObject("saved_canvas_props", LabelPropsSchema);
+    const legacyCanvas = this.loadAndValidateObject("saved_canvas_data", FabricJsonSchema);
     const items: ExportedLabelTemplate[] = [];
 
     if (legacyLabel !== null && legacyCanvas !== null) {
@@ -244,13 +230,9 @@ export class LocalStoragePersistence {
       const item: ExportedLabelTemplate = {
         label: legacyLabel,
         canvas: legacyCanvas,
-        timestamp: FileUtils.timestamp(),
+        timestamp: Math.floor(Date.now() / 1000),
       };
-      this.validateAndSaveObject(
-        `saved_label_${item.timestamp}`,
-        item,
-        ExportedLabelTemplateSchema,
-      );
+      this.validateAndSaveObject(`saved_label_${item.timestamp}`, item, ExportedLabelTemplateSchema);
     }
 
     Object.keys(localStorage)
@@ -258,10 +240,7 @@ export class LocalStoragePersistence {
       .forEach((key) => {
         if (key.startsWith("saved_label")) {
           try {
-            const item = this.loadAndValidateObject(
-              key,
-              ExportedLabelTemplateSchema,
-            );
+            const item = this.loadAndValidateObject(key, ExportedLabelTemplateSchema);
             if (item != null) {
               item.id = key;
               items.push(item);
@@ -279,42 +258,28 @@ export class LocalStoragePersistence {
    * @throws {z.ZodError}
    */
   static savePreviewProps(props: PreviewProps) {
-    this.validateAndSaveObject(
-      "saved_preview_props",
-      props,
-      PreviewPropsSchema,
-    );
+    this.validateAndSaveObject("saved_preview_props", props, PreviewPropsSchema);
   }
 
   /**
    * @throws {z.ZodError}
    */
   static loadSavedPreviewProps(): PreviewProps | null {
-    return this.loadAndValidateObject(
-      "saved_preview_props",
-      PreviewPropsSchema,
-    );
+    return this.loadAndValidateObject("saved_preview_props", PreviewPropsSchema);
   }
 
   /**
    * @throws {z.ZodError}
    */
   static saveLabelPresets(presets: LabelPreset[]) {
-    this.validateAndSaveObject(
-      "label_presets",
-      presets,
-      z.array(LabelPresetSchema),
-    );
+    this.validateAndSaveObject("label_presets", presets, z.array(LabelPresetSchema));
   }
 
   /**
    * @throws {z.ZodError}
    */
   static loadLabelPresets(): LabelPreset[] | null {
-    const presets = this.loadAndValidateObject(
-      "label_presets",
-      z.array(LabelPresetSchema),
-    );
+    const presets = this.loadAndValidateObject("label_presets", z.array(LabelPresetSchema));
     return presets === null || presets.length === 0 ? null : presets;
   }
 
@@ -348,21 +313,14 @@ export class LocalStoragePersistence {
    * @throws {z.ZodError}
    */
   static saveDefaultTemplate(value?: ExportedLabelTemplate) {
-    this.validateAndSaveObject(
-      "default_template",
-      value,
-      ExportedLabelTemplateSchema.omit({ id: true }),
-    );
+    this.validateAndSaveObject("default_template", value, ExportedLabelTemplateSchema.omit({ id: true }));
   }
 
   /**
    * @throws {z.ZodError}
    */
   static loadDefaultTemplate(): ExportedLabelTemplate | null {
-    return this.loadAndValidateObject(
-      "default_template",
-      ExportedLabelTemplateSchema,
-    );
+    return this.loadAndValidateObject("default_template", ExportedLabelTemplateSchema);
   }
 
   static hasCustomDefaultTemplate(): boolean {

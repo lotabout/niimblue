@@ -9,9 +9,10 @@
     enabled: boolean;
     onPlaceholderPicked: (name: string) => void;
     onClose?: () => void;
+    onChange?: () => void;
   }
 
-  let { enabled = $bindable(), onPlaceholderPicked, onClose }: Props = $props();
+  let { enabled = $bindable(), onPlaceholderPicked, onClose, onChange }: Props = $props();
 
   let placeholders = $state<string[]>([]);
   let rows = $state<number>(0);
@@ -27,9 +28,15 @@
   });
 </script>
 
-<AppModal title={$tr("editor.iconpicker.title")} {onClose}>
+<AppModal title={$tr("params.csv.title")} {onClose}>
   <div class="form-check form-switch">
-    <input class="form-check-input" type="checkbox" role="switch" id="enabled" bind:checked={enabled} />
+    <input
+      class="form-check-input"
+      type="checkbox"
+      role="switch"
+      id="enabled"
+      bind:checked={enabled}
+      onchange={() => queueMicrotask(() => onChange?.())} />
     <label class="form-check-label" for="enabled">{$tr("params.csv.enabled")}</label>
   </div>
 
@@ -37,7 +44,13 @@
     {$tr("params.csv.tip")}
   </div>
 
-  <textarea class="dsv form-control my-3" bind:value={$csvData.data} oninput={() => (enabled = true)}></textarea>
+  <textarea
+    class="dsv form-control my-3"
+    bind:value={$csvData.data}
+    oninput={() => {
+      enabled = true;
+      queueMicrotask(() => onChange?.());
+    }}></textarea>
 
   <div class="placeholders pt-1">
     {$tr("params.csv.rowsfound")} <strong>{rows}</strong>
