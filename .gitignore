@@ -7,3 +7,6 @@ CLAUDE.md
 /server/data/
 /server/.env
 __pycache__/
+.env.deploy
+/release/
+/niimblue-root.crt

@@ -1,0 +1,63 @@
+name: niimblue
+
+services:
+  web:
+    image: niimblue-web:local
+    platform: ${NIIMBLUE_PLATFORM:-linux/amd64}
+    restart: unless-stopped
+    ports:
+      - "${NIIMBLUE_BIND_IP:?Set the Docker host LAN IP in .env.deploy}:${NIIMBLUE_HTTP_PORT:-80}:80"
+      - "${NIIMBLUE_BIND_IP:?Set the Docker host LAN IP in .env.deploy}:${NIIMBLUE_HTTPS_PORT:-443}:443"
+    environment:
+      NIIMBLUE_HOST: "${NIIMBLUE_HOST:?Set the LAN IP or hostname in .env.deploy}"
+      NIIMBLUE_HTTPS_PORT: "${NIIMBLUE_HTTPS_PORT:-443}"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      storage:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  storage:
+    image: niimblue-storage:local
+    platform: ${NIIMBLUE_PLATFORM:-linux/amd64}
+    restart: unless-stopped
+    init: true
+    environment:
+      NIIMBLUE_STORAGE_HOST: "0.0.0.0"
+      NIIMBLUE_STORAGE_PORT: "8787"
+      NIIMBLUE_STORAGE_DB: /data/labels.sqlite3
+      NIIMBLUE_STORAGE_TOKEN: "${NIIMBLUE_STORAGE_TOKEN:-}"
+      NIIMBLUE_STORAGE_USERS: "${NIIMBLUE_STORAGE_USERS:-}"
+      # Browsers omit :443 from Origin; include the explicit published port too.
+      NIIMBLUE_STORAGE_ORIGINS: "https://${NIIMBLUE_HOST:?},https://${NIIMBLUE_HOST:?}:${NIIMBLUE_HTTPS_PORT:-443}"
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import json, os, urllib.request;
+          token = os.environ.get('NIIMBLUE_STORAGE_TOKEN') or next(iter(json.loads(os.environ.get('NIIMBLUE_STORAGE_USERS') or '{}').values()));
+          request = urllib.request.Request('http://127.0.0.1:8787/api/v1/health', headers={'Authorization': 'Bearer ' + token});
+          response = urllib.request.urlopen(request, timeout=3);
+          payload = json.load(response);
+          response.close();
+          assert payload.get('apiVersion') == 1 and payload.get('storage') == 'sqlite'
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  storage-data:
+  caddy-data:
+  caddy-config:

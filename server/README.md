@@ -1,5 +1,7 @@
 # Shared label storage
 
+For the web app, LAN HTTPS and this API in one stack, including a portable offline image bundle, use the root [all-in-one Compose deployment](../docs/deployment.zh-CN.md). The Compose configuration below runs only the storage API.
+
 The web app remains statically deployable. Each browser independently selects **Storage settings → This browser / Remote label library**. Remote mode connects to this optional Python + SQLite service. Python 3.11 or later is required; there are no additional Python dependencies.
 
 A service instance supports **multiple isolated users**, identified by their access tokens. The server maps each token to a stable user ID; browsers enter only the service URL and their token. Devices using the same user's token share that user's library. Every list, read, update, delete and import is scoped to the authenticated user; knowing another user's label ID does not grant access.

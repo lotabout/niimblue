@@ -153,6 +153,16 @@ Use **Storage settings** in the web app to choose browser storage or a user-conf
 
 Here are some options. HTTPS is required for non-localhost deployments.
 
+#### All-in-one LAN deployment (Docker Compose)
+
+The root Compose stack runs the web app, Caddy HTTPS and the Python/SQLite storage server together. It uses a local CA, proxies `/api/*` on the same HTTPS origin and persists labels and certificates in Docker volumes. Copy `.env.deploy.example` to `.env.deploy`, set the LAN address and a generated storage token, then run:
+
+```sh
+docker compose --env-file .env.deploy up -d --build
+```
+
+For a portable offline image bundle, run `npm run package:compose` (default `linux/amd64`) or `npm run package:compose -- --platform linux/arm64`. The target machine only needs Docker and Compose. See the [complete deployment, iOS certificate trust and migration guide (中文)](docs/deployment.zh-CN.md). iOS Safari still needs a Web Bluetooth extension such as BeaCIO in addition to trusted HTTPS.
+
 #### Serving static files
 
 To get static files run `npm run build` (result builds to `dist`) or download `niimblue-dist.zip` from [Releases](https://github.com/MultiMote/niimblue/releases).

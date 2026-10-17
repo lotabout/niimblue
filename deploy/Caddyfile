@@ -1,0 +1,36 @@
+{
+	auto_https disable_redirects
+	# IP-address clients may omit SNI, especially behind Docker port mappings.
+	default_sni {$NIIMBLUE_HOST}
+	# Trust the exported CA on clients, rather than inside this container.
+	skip_install_trust
+}
+
+# Explicit redirect also supports host port mappings such as 8080 -> 80 / 8443 -> 443.
+http://{$NIIMBLUE_HOST} {
+	redir https://{$NIIMBLUE_HOST}:{$NIIMBLUE_HTTPS_PORT:443}{uri} permanent
+}
+
+https://{$NIIMBLUE_HOST} {
+	tls internal
+	encode zstd gzip
+
+	@api path /api /api/*
+	handle @api {
+		# Preserve /api/v1 and Authorization for the storage server.
+		reverse_proxy storage:8787
+	}
+
+	handle {
+		root * /srv
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Container-local liveness check; this port is never published to the host.
+http://:8080 {
+	bind 127.0.0.1
+	respond /healthz "ok" 200
+}

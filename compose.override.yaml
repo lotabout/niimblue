@@ -1,0 +1,12 @@
+# Automatically loaded beside compose.yaml in a source checkout.
+# The portable image bundle omits this file, so the target needs no source/build tools.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: https-server
+  storage:
+    build:
+      context: ./server
+      dockerfile: Dockerfile

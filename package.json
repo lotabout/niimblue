@@ -12,6 +12,7 @@
 		"dev-local-lib": "vite --force",
 		"build": "vite build",
 		"build-rel": "vite build --base=./",
+		"package:compose": "bash scripts/package-compose.sh",
 		"preview": "vite preview",
 		"sv-check": "svelte-check --tsconfig ./tsconfig.json",
 		"gen-mdi-list": "node gen-mdi-list.mjs > src/styles/mdi_icons.ts",

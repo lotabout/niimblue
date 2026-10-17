@@ -1,5 +1,7 @@
 # 2026.10.0
 
+* Add an all-in-one LAN Compose stack with Caddy local HTTPS, same-origin storage API, persistent certificates and portable amd64/arm64 offline image bundles.
+
 * Add token-based multi-user storage isolation, per-user recovery scope and migration of existing labels to the default user.
 
 * Add selectable browser or self-hosted SQLite label storage, connection settings and cross-device conflict protection; allow HTTP storage on private IPv4 LAN addresses.
