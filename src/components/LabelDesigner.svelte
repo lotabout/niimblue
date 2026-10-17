@@ -41,7 +41,7 @@
   import SaveLabelDialog from "$/components/dialogs/SaveLabelDialog.svelte";
   import {
     createLabelDocument,
-    labelFingerprint,
+    hasLabelChanges,
     restoreLabelDocument,
     type LabelDocumentState,
   } from "$/utils/label_document";
@@ -182,7 +182,8 @@
         csvData: $csvData,
       });
       draftSaveFailed = false;
-    } catch {
+    } catch (error) {
+      console.error("Recovery draft save failed:", error);
       if (!draftSaveFailed) Toasts.error($tr("workspace.draft.failed"));
       draftSaveFailed = true;
     }
@@ -547,7 +548,7 @@
           Toasts.error(e);
         }
         documentState = restoreLabelDocument(draft, original);
-        hasUnsavedChanges = labelFingerprint(snapshotCurrentLabel()) !== documentState.baseline;
+        hasUnsavedChanges = hasLabelChanges(snapshotCurrentLabel(), documentState.baseline);
         if (hasUnsavedChanges || !documentState.id) Toasts.message($tr("workspace.draft.restored"));
         return;
       }
@@ -744,7 +745,7 @@
     void $csvData;
     void documentState;
     if (!documentReady || loadingDocument) return;
-    hasUnsavedChanges = labelFingerprint(snapshotCurrentLabel()) !== documentState.baseline;
+    hasUnsavedChanges = hasLabelChanges(snapshotCurrentLabel(), documentState.baseline);
     clearTimeout(draftTimer);
     draftTimer = setTimeout(flushDraft, 400);
   });

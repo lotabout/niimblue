@@ -14,7 +14,7 @@ import {
   type PreviewProps,
 } from "$/types";
 import { z } from "zod";
-import type { LabelDraft } from "./label_document";
+import { normalizeLabelBaseline, type LabelDraft } from "./label_document";
 import { get, writable, type Updater, type Writable } from "svelte/store";
 
 const LabelDraftSchema = z.object({
@@ -160,11 +160,17 @@ export class LocalStoragePersistence {
   }
 
   static loadLabelDraft(): LabelDraft | null {
-    return this.loadAndValidateObject("label_workspace_draft", LabelDraftSchema);
+    const draft = this.loadAndValidateObject("label_workspace_draft", LabelDraftSchema);
+    if (draft) draft.document.baseline = normalizeLabelBaseline(draft.document.baseline);
+    return draft;
   }
 
   static saveLabelDraft(draft: LabelDraft) {
-    this.validateAndSaveObject("label_workspace_draft", draft, LabelDraftSchema);
+    this.validateAndSaveObject(
+      "label_workspace_draft",
+      { ...draft, document: { ...draft.document, baseline: normalizeLabelBaseline(draft.document.baseline) } },
+      LabelDraftSchema,
+    );
   }
 
   static appendLabels(labels: ExportedLabelTemplate[]): {

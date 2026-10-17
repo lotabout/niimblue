@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { buildSync } from "esbuild";
-import { createLabelDocument, labelFingerprint, restoreLabelDocument } from "../src/utils/label_document.ts";
+import {
+  createLabelDocument,
+  hasLabelChanges,
+  labelFingerprint,
+  normalizeLabelBaseline,
+  restoreLabelDocument,
+} from "../src/utils/label_document.ts";
 
 // Bundle the existing browser module so its $/ imports work in Node as they do in Vite.
 const bundled = buildSync({
@@ -16,14 +22,21 @@ const { LocalStoragePersistence: persistence } = await import(
 );
 
 let failWrites;
+let storageLimit;
 beforeEach(() => {
   failWrites = false;
+  storageLimit = Infinity;
   const storage = {};
   Object.defineProperties(storage, {
     getItem: { value: (key) => storage[key] ?? null },
     setItem: {
       value: (key, value) => {
         if (failWrites) throw new Error("Quota exceeded");
+        const size = Object.entries(storage).reduce(
+          (total, [storedKey, storedValue]) => total + (storedKey === key ? 0 : storedKey.length + storedValue.length),
+          key.length + value.length,
+        );
+        if (size > storageLimit) throw new DOMException("Local storage quota exceeded", "QuotaExceededError");
         storage[key] = value;
       },
     },
@@ -41,6 +54,66 @@ const label = (overrides = {}) => ({
   label: { size: { width: 240, height: 96 }, printDirection: "left" },
   canvas: { version: "7.4.0", objects: [{ type: "Textbox", text: "Original" }] },
   ...overrides,
+});
+
+// The canonical JSON format used by drafts written before compact fingerprints.
+const legacyBaseline = (label) => {
+  const sortKeys = (value) => {
+    if (Array.isArray(value)) return value.map(sortKeys);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.keys(value)
+          .sort()
+          .map((key) => [key, sortKeys(value[key])]),
+      );
+    }
+    return value;
+  };
+  return JSON.stringify(
+    sortKeys({ title: label.title ?? "", label: label.label, canvas: label.canvas, csv: label.csv }),
+  );
+};
+
+test("opening a large image label after an unsaved draft stays within the browser storage quota", () => {
+  storageLimit = 5 * 1024 * 1024;
+  const src = `data:image/png;base64,${"a".repeat(2 * 1024 * 1024)}`;
+  const imageLabel = persistence.saveLabel(label({ canvas: { version: "7.4.0", objects: [{ type: "Image", src }] } }));
+  const unsaved = label({ title: "" });
+  persistence.saveLabelDraft({ version: 1, label: unsaved, document: createLabelDocument(unsaved) });
+  const oldDraft = {
+    version: 1,
+    label: imageLabel,
+    document: { id: imageLabel.id, title: imageLabel.title, baseline: legacyBaseline(imageLabel) },
+  };
+  assert.throws(
+    () => localStorage.setItem("label_workspace_draft", JSON.stringify(oldDraft)),
+    (error) => error.name === "QuotaExceededError",
+  );
+  const document = createLabelDocument(imageLabel, imageLabel.id);
+  assert.ok(document.baseline.length < 64);
+  persistence.saveLabelDraft({ version: 1, label: imageLabel, document });
+  const recovered = persistence.loadLabelDraft();
+  assert.equal(recovered.label.canvas.objects[0].src.length, src.length);
+  assert.equal(recovered.document.id, imageLabel.id);
+  assert.equal(hasLabelChanges(recovered.label, recovered.document.baseline), false);
+  assert.equal(persistence.loadLabels().length, 1);
+  assert.equal(persistence.loadLabel(imageLabel.id).canvas.objects[0].src.length, src.length);
+});
+
+test("old drafts migrate their full comparison baseline while retaining dirty state", () => {
+  const original = persistence.saveLabel(label());
+  const document = { id: original.id, title: original.title, baseline: legacyBaseline(original) };
+  const edited = { ...original, csv: { data: "name\nUnsaved" } };
+  localStorage.setItem("label_workspace_draft", JSON.stringify({ version: 1, label: edited, document }));
+  const recovered = persistence.loadLabelDraft();
+  assert.equal(recovered.document.baseline, labelFingerprint(original));
+  assert.equal(hasLabelChanges(recovered.label, recovered.document.baseline), true);
+  assert.equal(hasLabelChanges(original, document.baseline), false);
+  persistence.saveLabelDraft({ version: 1, label: edited, document });
+  const stored = JSON.parse(localStorage.getItem("label_workspace_draft"));
+  assert.equal(stored.document.baseline, labelFingerprint(original));
+  assert.equal(stored.label.csv.data, "name\nUnsaved");
+  assert.equal(normalizeLabelBaseline(""), "");
 });
 
 test("first save, in-place save, and Save as preserve identity without touching other labels", () => {
