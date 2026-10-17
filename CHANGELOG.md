@@ -1,5 +1,7 @@
 # 2026.10.0
 
+* Pace and serialize iOS BLE writes, back off and retry explicit bridge rate-limit rejections, and reduce print status polling traffic.
+
 * Combine tools and properties into collapsible tabs below the canvas on narrow screens and compact the mobile header.
 
 * Use one published port for LAN HTTPS and same-port HTTP-to-HTTPS redirects, while keeping the container-local health check on HTTP.

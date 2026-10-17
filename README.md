@@ -67,6 +67,9 @@ Setup details available [here](https://beacio.com/setup).
 
 On iOS, the app prefers writes with response when the printer characteristic supports them;
 this avoids repeat-write failures observed with BeaCIO and B1. Printers exposing only writes without response still use that method.
+Writes are serialized with a minimum 100ms interval on iOS. Explicit BLE rate-limit rejections are retried
+after 1, 2 and 4 seconds, with a slower write pace retained for the connection. Other write errors are not retried.
+Print status polling also slows down to leave room for these paced writes.
 
 ## Images
 

@@ -114,7 +114,9 @@
       density,
       speed,
       labelType,
-      statusPollIntervalMs: 100,
+      // Leave room for paced BLE writes instead of queuing status requests
+      // faster than the bridge can send them (at least 1s on iOS).
+      statusPollIntervalMs: Math.max(100, client.getPacketInterval() * 10),
       statusTimeoutMs: 8_000,
       pageColor: PageColorType.SingleColor,
     };

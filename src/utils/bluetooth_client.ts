@@ -15,12 +15,16 @@ import {
 } from "@mmote/niimbluelib";
 
 const PRINTER_CHARACTERISTIC = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
+const IOS_MIN_WRITE_INTERVAL_MS = 100;
+const IOS_RATE_LIMIT_RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 interface IOSConnection {
   device: BluetoothDevice;
   server: BluetoothRemoteGATTServer;
   channel?: BluetoothRemoteGATTCharacteristic;
   writeMethod?: "writeValueWithResponse" | "writeValueWithoutResponse";
+  writeIntervalMs: number;
+  writeQueue: Promise<void>;
   onDisconnect: () => void;
   onNotification: () => void;
 }
@@ -49,6 +53,8 @@ export class BluetoothClient extends NiimbotBluetoothClient {
     const session: IOSConnection = {
       device,
       server: device.gatt,
+      writeIntervalMs: IOS_MIN_WRITE_INTERVAL_MS,
+      writeQueue: Promise.resolve(),
       onDisconnect: () => {
         if (this.iosConnection !== session) return;
         this.releaseIOSConnection(session);
@@ -142,21 +148,48 @@ export class BluetoothClient extends NiimbotBluetoothClient {
     session.server.disconnect();
   }
 
+  override getPacketInterval() {
+    return Math.max(super.getPacketInterval(), this.iosConnection?.writeIntervalMs ?? 0);
+  }
+
   override async sendRaw(data: Uint8Array, force?: boolean) {
     const session = this.iosConnection;
     if (!session) return super.sendRaw(data, force);
     const send = async () => {
-      await Utils.sleep(this.packetIntervalMs);
-      this.assertIOSConnection(session);
-      if (!session.channel || !session.writeMethod) throw new Error("Channel is closed");
-      const method = `${session.writeMethod} ${session.channel.uuid}`;
-      try {
-        // Preserve the view's byte offset and length when passing a buffer.
-        await session.channel[session.writeMethod](new Uint8Array(data).buffer);
-      } catch (error) {
-        throw new Error(`${method}: ${error}`, { cause: error });
-      }
-      this.emit("rawpacketsent", new RawPacketSentEvent(data));
+      // A separate queue also serializes forced writes, which bypass the
+      // protocol mutex while a command is waiting for its response.
+      const writing = session.writeQueue.then(async () => {
+        let retryDelayMs = 0;
+        for (let attempt = 0; ; attempt++) {
+          await Utils.sleep(Math.max(this.packetIntervalMs, session.writeIntervalMs, retryDelayMs));
+          this.assertIOSConnection(session);
+          if (!session.channel || !session.writeMethod) throw new Error("Channel is closed");
+          const method = `${session.writeMethod} ${session.channel.uuid}`;
+          try {
+            // Preserve the view's byte offset and length when passing a buffer.
+            await session.channel[session.writeMethod](new Uint8Array(data).buffer);
+          } catch (error) {
+            // Only replay requests explicitly rejected by the bridge's rate
+            // limiter. Other failures may have already delivered printer data.
+            const message = error instanceof Error ? error.message : String(error);
+            if (
+              !/rate limit exceeded[\s\S]*too many BLE requests/i.test(message) ||
+              attempt >= IOS_RATE_LIMIT_RETRY_DELAYS_MS.length
+            ) {
+              throw new Error(`${method}: ${error}`, { cause: error });
+            }
+            retryDelayMs = IOS_RATE_LIMIT_RETRY_DELAYS_MS[attempt];
+            // Retain the slower pace for subsequent packets in this connection.
+            session.writeIntervalMs = Math.min(session.writeIntervalMs * 2, 1000);
+            continue;
+          }
+          this.emit("rawpacketsent", new RawPacketSentEvent(data));
+          return;
+        }
+      });
+      // A rejected write must not poison the queue used by PrintEnd/cleanup.
+      session.writeQueue = writing.catch(() => {});
+      await writing;
     };
     if (force) await send();
     else await this.mutex.runExclusive(send);
