@@ -1,3 +1,4 @@
 **
 !Dockerfile
 !storage_server.py
+!border_storage.py

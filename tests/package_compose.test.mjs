@@ -9,6 +9,26 @@ import { fileURLToPath } from "node:url";
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const script = path.join(repo, "scripts/package-compose.sh");
 
+test("storage image includes every runtime Python module in its COPY sources and build context", () => {
+  const server = path.join(repo, "server");
+  const dockerfile = readFileSync(path.join(server, "Dockerfile"), "utf8");
+  const copySources = dockerfile
+    .split("\n")
+    .filter((line) => line.startsWith("COPY "))
+    .flatMap((line) => line.trim().split(/\s+/).slice(1, -1));
+  // This context deliberately denies everything except explicit file exceptions.
+  const ignoreRules = readFileSync(path.join(server, ".dockerignore"), "utf8")
+    .split("\n")
+    .map((line) => line.trim());
+  assert.equal(ignoreRules[0], "**");
+  const runtimeModules = readdirSync(server).filter((file) => file.endsWith(".py") && !file.startsWith("test_"));
+  assert.ok(runtimeModules.length > 0);
+  for (const file of runtimeModules) {
+    assert.ok(copySources.includes(file), `${file} must be copied into the storage image`);
+    assert.ok(ignoreRules.includes(`!${file}`), `${file} must be allowed into the storage build context`);
+  }
+});
+
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "niimblue package test "));
   t.after(() => rmSync(root, { recursive: true, force: true }));
