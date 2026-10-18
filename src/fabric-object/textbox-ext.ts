@@ -1,10 +1,12 @@
 import * as fabric from "fabric";
+import { DEFAULT_EMOJI_FONT, emojiRenderText, isEmojiGrapheme } from "$/utils/emoji";
 
 interface UniqueTextboxExtProps {
   fontAutoSize: boolean;
+  emojiFontFamily: string;
 }
 
-const TEXTBOX_PROPS: Array<keyof UniqueTextboxExtProps> = ["fontAutoSize"];
+const TEXTBOX_PROPS: Array<keyof UniqueTextboxExtProps> = ["fontAutoSize", "emojiFontFamily"];
 
 const RTL_STRONG_CHAR_RE = /[\p{Script=Arabic}\p{Script=Hebrew}]/u;
 const LETTER_RE = /\p{Letter}/u;
@@ -22,6 +24,7 @@ const detectTextDirection = (text: string): "ltr" | "rtl" | undefined => {
 
 export const textboxExtDefaultValues: Partial<fabric.TClassProperties<TextboxExt>> = {
   fontAutoSize: false,
+  emojiFontFamily: DEFAULT_EMOJI_FONT,
 };
 
 export interface TextboxExtProps extends fabric.TextboxProps, UniqueTextboxExtProps {}
@@ -36,6 +39,10 @@ export class TextboxExt<
   implements UniqueTextboxExtProps
 {
   declare fontAutoSize: boolean;
+  declare emojiFontFamily: string;
+
+  static override cacheProperties = [...fabric.Textbox.cacheProperties, "emojiFontFamily"];
+  static override textLayoutProperties = [...fabric.Textbox.textLayoutProperties, "emojiFontFamily"];
 
   private widthBeforeEditing?: number;
 
@@ -49,6 +56,42 @@ export class TextboxExt<
       mb: false,
       mt: false,
     });
+  }
+
+  override getCompleteStyleDeclaration(lineIndex: number, charIndex: number) {
+    const style = super.getCompleteStyleDeclaration(lineIndex, charIndex);
+    // Wrapping measures incoming text before Fabric assigns _textLines;
+    // _measureChar below uses the actual grapheme during that phase.
+    if (!this.isWrapping && isEmojiGrapheme(this._textLines?.[lineIndex]?.[charIndex] ?? "")) {
+      style.fontFamily = this.emojiFontFamily ?? DEFAULT_EMOJI_FONT;
+    }
+    return style;
+  }
+
+  override _measureChar(...args: Parameters<fabric.Textbox["_measureChar"]>) {
+    let [grapheme, style, previous, previousStyle] = args;
+    const fontFamily = this.emojiFontFamily ?? DEFAULT_EMOJI_FONT;
+    if (isEmojiGrapheme(grapheme)) style = { ...style, fontFamily };
+    if (previous && isEmojiGrapheme(previous)) previousStyle = { ...style, ...previousStyle, fontFamily };
+    return super._measureChar(
+      emojiRenderText(grapheme, style.fontFamily),
+      style,
+      previous && emojiRenderText(previous, previousStyle.fontFamily ?? this.fontFamily),
+      previousStyle,
+    );
+  }
+
+  override _renderChar(...args: Parameters<fabric.Textbox["_renderChar"]>) {
+    const style = this.getCompleteStyleDeclaration(args[2], args[3]);
+    args[4] = emojiRenderText(args[4], style.fontFamily);
+    super._renderChar(...args);
+  }
+
+  override isEmptyStyles(lineIndex?: number): boolean {
+    // Fabric's unstyled-line shortcut would otherwise draw the whole line in
+    // the first character's font, bypassing the per-grapheme font selection.
+    const text = lineIndex === undefined ? this.text : this._textLines?.[lineIndex]?.join("") ?? "";
+    return !isEmojiGrapheme(text) && super.isEmptyStyles(lineIndex!);
   }
 
   private syncTextDirection(): boolean {

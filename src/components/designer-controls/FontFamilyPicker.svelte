@@ -7,14 +7,18 @@
   import { LocalStoragePersistence } from "$/utils/persistence";
   import { fontCache, userFonts } from "$/stores/app";
   import FontsMenu from "$/components/dialogs/FontsMenu.svelte";
+  import type { MaterialIcon } from "$/styles/mdi_icons";
 
   interface Props {
     editRevision?: number;
     value: string;
     valueUpdated: (v: string) => void;
+    label?: string;
+    icon?: MaterialIcon;
+    builtinFonts?: { family: string; label: string }[];
   }
 
-  let { value, valueUpdated, editRevision }: Props = $props();
+  let { value, valueUpdated, editRevision, label, icon = "text_format", builtinFonts = [] }: Props = $props();
 
   let fontQuerySupported = typeof queryLocalFonts !== "undefined";
   let searchString = $state<string>("");
@@ -57,19 +61,21 @@
 </script>
 
 <div class="input-group flex-nowrap input-group-sm font-family-picker">
-  <span class="input-group-text" title={$tr("params.text.font_family")}>
-    <MdIcon icon="text_format" />
+  <span class="input-group-text" title={label ?? $tr("params.text.font_family")}>
+    <MdIcon {icon} />
+    {#if label}<span class="ms-1">{label}</span>{/if}
   </span>
 
   <input
     type="text"
     class="form-control font-family-input"
+    aria-label={label ?? $tr("params.text.font_family")}
     data-ver={editRevision}
     {value}
     oninput={(e) => valueUpdated(e.currentTarget.value)} />
 
-  <!-- svelte-ignore a11y_consider_explicit_label -->
-  <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"></button>
+  <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+    aria-label={label ?? $tr("params.text.font_family")}></button>
 
   <div class="dropdown-menu">
     <div class="px-3 py-1">
@@ -79,6 +85,10 @@
         placeholder={$tr("params.text.font_family.search")}
         bind:value={searchString} />
     </div>
+
+    {#each builtinFonts.filter((font) => font.label.toLowerCase().includes(searchString.toLowerCase()) || font.family.toLowerCase().includes(searchString.toLowerCase())) as font (font.family)}
+      <button class="dropdown-item" type="button" onclick={() => fontClick(font.family)}>{font.label}</button>
+    {/each}
 
     {#if userFontsFiltered.length > 0}
       <h6 class="dropdown-header">{$tr("params.text.user_fonts")}</h6>

@@ -6,11 +6,14 @@ import "bootstrap/js/dist/collapse";
 import App from "$/App.svelte";
 import { mount } from "svelte";
 import { configureFabric } from "$/defaults";
+import { loadEmojiFont } from "$/utils/emoji_font";
 
 configureFabric();
 
-const app = mount(App, {
-  target: document.getElementById("app")!,
-});
+const app = loadEmojiFont()
+  .catch((error) => console.error("Unable to load the built-in emoji font:", error))
+  .then(() => mount(App, {
+    target: document.getElementById("app")!,
+  }));
 
 export default app;

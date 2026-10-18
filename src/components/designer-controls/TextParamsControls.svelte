@@ -5,6 +5,7 @@
   import FontFamilyPicker from "$/components/designer-controls/FontFamilyPicker.svelte";
   import { TextboxExt } from "$/fabric-object/textbox-ext";
   import { appPrompt } from "$/stores/prompt";
+  import { DEFAULT_EMOJI_FONT } from "$/utils/emoji";
 
   interface Props {
     selectedText: fabric.IText;
@@ -58,6 +59,13 @@
   const updateFontFamily = (v: string) => {
     selectedText.set({ fontFamily: v });
     valueUpdated();
+  };
+
+  const updateEmojiFontFamily = (v: string) => {
+    if (selectedText instanceof TextboxExt) {
+      selectedText.set({ emojiFontFamily: v || DEFAULT_EMOJI_FONT });
+      valueUpdated();
+    }
   };
 
   const fontSizeUp = () => {
@@ -291,7 +299,17 @@
     oninput={(e) => characterSpacingChange(e.currentTarget.valueAsNumber)} />
 </div>
 
-<FontFamilyPicker {editRevision} value={selectedText.fontFamily} valueUpdated={updateFontFamily} />
+<FontFamilyPicker {editRevision} label={$tr("params.text.body_font_family")}
+  value={selectedText.fontFamily} valueUpdated={updateFontFamily} />
+
+{#if selectedText instanceof TextboxExt}
+  <FontFamilyPicker {editRevision} label={$tr("params.text.emoji_font_family")} icon="sentiment_satisfied"
+    value={selectedText.emojiFontFamily} valueUpdated={updateEmojiFontFamily}
+    builtinFonts={[
+      { family: DEFAULT_EMOJI_FONT, label: $tr("params.text.emoji_font_mono") },
+      { family: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji", label: $tr("params.text.emoji_font_system") },
+    ]} />
+{/if}
 
 <button class="btn btn-sm btn-secondary" onclick={editInPopup} title={$tr("params.text.edit")}>
   <MdIcon icon="edit" />
