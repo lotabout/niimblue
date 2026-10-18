@@ -63,6 +63,23 @@ const pathsAsset = z
       .max(100),
   })
   .strict();
+const proceduralLayout = z
+  .object({
+    engine: z.literal("niimblue-procedural"),
+    version: z.literal(1),
+    recipe: z.enum(BORDER_RECIPE_IDS),
+    artworkScale: z.number().min(0.25).max(4),
+    sizing: z.enum(["fixed", "frame-height"]),
+    minimum: z.object({ width: z.number().min(2).max(32), height: z.number().min(2).max(32) }).strict(),
+  })
+  .strict();
+const imageLayout = z
+  .object({
+    engine: z.literal("niimblue-image"),
+    version: z.literal(1),
+    fit: z.enum(["contain", "stretch"]),
+  })
+  .strict();
 export const borderManifestSchema = z
   .object({
     format: z.literal("niimblue-border"),
@@ -91,21 +108,14 @@ export const borderManifestSchema = z
         borderColor: z.string().regex(/^#[0-9a-f]{6}$/i),
       })
       .strict(),
-    layout: z
-      .object({
-        engine: z.literal("niimblue-procedural"),
-        version: z.literal(1),
-        recipe: z.enum(BORDER_RECIPE_IDS),
-        artworkScale: z.number().min(0.25).max(4),
-        sizing: z.enum(["fixed", "frame-height"]),
-        minimum: z.object({ width: z.number().min(2).max(32), height: z.number().min(2).max(32) }).strict(),
-      })
-      .strict(),
+    layout: z.discriminatedUnion("engine", [proceduralLayout, imageLayout]),
     assets: z.record(z.string().regex(/^[a-z][a-zA-Z0-9]*$/), z.union([pngAsset, pathsAsset])),
     provenance: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 export type BorderManifest = z.infer<typeof borderManifestSchema>;
+export type ProceduralBorderManifest = BorderManifest & { layout: z.infer<typeof proceduralLayout> };
+export type ImageBorderManifest = BorderManifest & { layout: z.infer<typeof imageLayout> };
 export type BorderPngAsset = z.infer<typeof pngAsset>;
 
 const REQUIRED_ARTWORK: Partial<Record<(typeof BORDER_RECIPE_IDS)[number], string[]>> = {
@@ -127,6 +137,16 @@ const REQUIRED_ARTWORK: Partial<Record<(typeof BORDER_RECIPE_IDS)[number], strin
 
 export function validateBorderManifest(value: unknown): BorderManifest {
   const border = borderManifestSchema.parse(value);
+  if (border.layout.engine === "niimblue-image") {
+    const frame = border.assets.frame;
+    if (Object.keys(border.assets).length !== 1 || frame?.type !== "png" || border.legacyPreset)
+      throw new Error("Image borders require exactly one PNG frame and no legacy preset");
+    if (frame.naturalWidth > 8192 || frame.naturalHeight > 8192 || frame.naturalWidth * frame.naturalHeight > 16000000)
+      throw new Error("Border image exceeds the pixel limit");
+    if (frame.crop.some((value, index) => value !== [0, 0, frame.naturalWidth, frame.naturalHeight][index]))
+      throw new Error("Image borders must preserve the entire image");
+    return border;
+  }
   if (border.layout.sizing === "frame-height" && border.layout.recipe !== "olive")
     throw new Error("Frame-height sizing requires the olive side-frame recipe");
   for (const name of REQUIRED_ARTWORK[border.layout.recipe] ?? []) {
@@ -147,7 +167,7 @@ const archiveSchema = z
     format: z.literal("niimblue-border-package"),
     schemaVersion: z.literal(1),
     border: z.unknown(),
-    files: z.record(z.string(), z.string().max(12 * 1024 * 1024)),
+    files: z.record(z.string(), z.string().max(14 * 1024 * 1024)),
   })
   .strict();
 

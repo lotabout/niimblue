@@ -1,5 +1,5 @@
 import { BORDER_PACKAGES, BORDER_RASTER_ARTWORK, type BorderPreset } from "./border_catalog.ts";
-import type { BorderManifest } from "./border_package.ts";
+import type { ProceduralBorderManifest } from "./border_package.ts";
 export type { BorderPreset } from "./border_catalog.ts";
 
 export const isRasterArtwork = (name: string): boolean => Object.hasOwn(BORDER_RASTER_ARTWORK, name);
@@ -237,7 +237,7 @@ export function layoutBorder(
   width: number,
   height: number,
   settings: BorderSettings,
-  definition?: BorderManifest,
+  definition?: ProceduralBorderManifest,
 ): BorderPath[] {
   if (definition?.layout.recipe === "rounded")
     return layoutLegacyBorder(width, height, { ...settings, preset: "rounded" });

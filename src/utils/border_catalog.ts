@@ -16,7 +16,7 @@ import ribbon from "../assets/borders/ribbon/border.json" with { type: "json" };
 import cloud from "../assets/borders/cloud/border.json" with { type: "json" };
 import stitch from "../assets/borders/stitch/border.json" with { type: "json" };
 import meadow from "../assets/borders/meadow/border.json" with { type: "json" };
-import type { BorderManifest } from "./border_package.ts";
+import type { ProceduralBorderManifest } from "./border_package.ts";
 
 const packages = {
   rounded,
@@ -40,7 +40,7 @@ const packages = {
 };
 export type BorderPreset = keyof typeof packages;
 // Every built-in manifest is schema-validated in the package round-trip tests.
-export const BORDER_PACKAGES = packages as unknown as Record<BorderPreset, BorderManifest>;
+export const BORDER_PACKAGES = packages as unknown as Record<BorderPreset, ProceduralBorderManifest>;
 
 export const BORDER_RASTER_ARTWORK = Object.fromEntries(
   Object.entries(BORDER_PACKAGES).flatMap(([key, border]) =>
@@ -52,7 +52,7 @@ export const BORDER_RASTER_ARTWORK = Object.fromEntries(
   ),
 ) as Record<string, import("./border_package.ts").BorderPngAsset & { path: string }>;
 
-export function findBorderPackage(id: string): BorderManifest | undefined {
+export function findBorderPackage(id: string): ProceduralBorderManifest | undefined {
   return Object.values(BORDER_PACKAGES).find((border) => border.id === id || border.legacyPreset === id);
 }
 

@@ -46,7 +46,17 @@ The self-contained transfer format is `.niimborder`, a JSON archive containing t
 node --experimental-strip-types scripts/export-border.mjs olive /tmp/olive.niimborder
 ```
 
-`border_package.ts` exposes `createBorderArchive`, `serializeBorderArchive` and `parseBorderArchive`. Parsing validates supported versions/recipes, resource completeness, package-relative paths, PNG headers/dimensions, alpha format and crop/aspect metadata. It returns a validated package without overwriting any installed design. Tests demonstrate rendering a renamed package from only its manifest and embedded images. Import/export UI, custom-package installation/persistence, and embedding package dependencies inside an exported _label_ are not yet implemented.
+`border_package.ts` exposes `createBorderArchive`, `serializeBorderArchive` and `parseBorderArchive`. Parsing validates supported versions/recipes, resource completeness, package-relative paths, PNG headers/dimensions, alpha format and crop/aspect metadata. It returns a validated package without overwriting any installed design. Tests demonstrate rendering a renamed package from only its manifest and embedded images. The existing procedural packages remain built-in. A second layout engine, `niimblue-image` version 1, represents a complete image frame with a single `frame` PNG asset, preserved colors/alpha and a default `contain` fit. It shares the archive envelope and stable identity/version fields. Arbitrary executable code and external image URLs are not supported.
+
+## Custom image borders
+
+Insert **Border**, then choose **My borders → Upload image border**. PNG, JPEG and WebP uploads are normalized to RGBA PNG without recoloring or automatic background removal. Enter a name, inspect the preview and select **Save and use**. Image borders support dimensions, inset, **Keep proportions** (default), explicit **Fill frame (stretch)** and **Fit to label**; procedural line/decorative controls are hidden. Each source/normalized image is limited to 10 MiB, 8192 pixels per side and 16 million pixels in total.
+
+The selected storage provider owns the reusable library. Local records use IndexedDB with binary PNG blobs and small preview metadata. Remote records use the authenticated `/api/v1/borders` API; the server stores immutable PNG files and user-scoped SQLite metadata. The picker refreshes metadata on opening, returning to a visible page, reconnecting, and every 30 seconds while visible. It downloads full PNGs only when applying an existing border. Same-name uploads are rejected within a user's library. Switching storage/users does not apply late responses from the previous library.
+
+`LabelBorder` embeds its complete image archive in `borderPackage`, together with `borderId`, `borderVersion` and the per-instance `imageFit`. Label JSON export/import, IndexedDB recovery, undo/redo, clone, SVG export and print preview restore that embedded copy independently of the reusable library or storage service. Deleting a library entry leaves current and saved labels intact. Built-in procedural borders continue to serialize their existing IDs/preset aliases.
+
+The picker accepts image files; importing arbitrary procedural `.niimborder` packages remains a separate feature.
 
 ## Implementation and verification
 

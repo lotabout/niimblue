@@ -57,7 +57,7 @@ class StorageAPITest(unittest.TestCase):
         client.request(method, "/api/v1" + path, body=body if isinstance(body, bytes) else json.dumps(body) if body is not None else None, headers=headers)
         response = client.getresponse()
         payload = response.read()
-        result = response.status, (payload if response.getheader("Content-Type") == "application/gzip" else json.loads(payload)) if payload else None, dict(response.getheaders())
+        result = response.status, (payload if response.getheader("Content-Type") in ("application/gzip", "image/png") else json.loads(payload)) if payload else None, dict(response.getheaders())
         client.close()
         return result
 

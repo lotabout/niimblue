@@ -11,6 +11,7 @@ import stat
 import time
 import uuid
 import zlib
+from border_storage import BorderError, MAX_BORDER_BYTES, validate_border_upload
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -18,6 +19,7 @@ from urllib.parse import unquote, urlsplit
 MAX_BODY = 20 * 1024 * 1024
 LABEL_PATH = re.compile(r"^/api/v1/labels/([a-f0-9-]{36})$")
 FONT_PATH = re.compile(r"^/api/v1/fonts/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$")
+BORDER_PATH = re.compile(r"^/api/v1/borders/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$")
 MAX_FONT_BYTES = 32 * 1024 * 1024
 USER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
@@ -144,6 +146,9 @@ class StorageServer(ThreadingHTTPServer):
         self.font_dir = Path(self.db_path).parent / "fonts"
         self.font_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.font_dir = self.font_dir.resolve()
+        self.border_dir = Path(self.db_path).parent / "borders"
+        self.border_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.border_dir = self.border_dir.resolve()
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -154,6 +159,7 @@ class StorageServer(ThreadingHTTPServer):
                 db.execute("ALTER TABLE labels ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'default'")
             db.execute("CREATE INDEX IF NOT EXISTS labels_owner ON labels(owner_id)")
             db.execute("CREATE TABLE IF NOT EXISTS fonts (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, family TEXT NOT NULL, mime_type TEXT NOT NULL, UNIQUE(owner_id, family))")
+            db.execute("CREATE TABLE IF NOT EXISTS borders (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, thumbnail TEXT NOT NULL, UNIQUE(owner_id, name))")
         super().__init__(address, Handler)
 
     @contextmanager
@@ -229,6 +235,21 @@ class Handler(BaseHTTPRequestHandler):
             raise APIError(400, "Incomplete body")
         return body
 
+    def send_border(self, border_id):
+        path = self.server.border_dir / (border_id + ".png")
+        if path.is_symlink():
+            raise APIError(404, "Border image is unavailable")
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        except OSError:
+            raise APIError(404, "Border image is unavailable") from None
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BORDER_BYTES:
+                raise APIError(404, "Border image is unavailable")
+            self.send_headers(200, info.st_size, "image/png")
+            shutil.copyfileobj(source, self.wfile, length=65536)
+
     def read_json(self):
         if self.headers.get_content_type() != "application/json":
             raise APIError(415, "Use application/json")
@@ -273,6 +294,49 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"apiVersion": 1, "storage": "sqlite", "userId": user_id})
                 return
             with self.server.connect() as db:
+                if path == "/api/v1/borders":
+                    if self.command == "GET":
+                        self.send_json(200, [dict(row) for row in db.execute("SELECT id, name, width, height, thumbnail FROM borders WHERE owner_id = ? ORDER BY name", (user_id,))])
+                        return
+                    if self.command == "POST":
+                        name, png, width, height, thumbnail = validate_border_upload(self.read_json())
+                        border_id = str(uuid.uuid4())
+                        border_path = self.server.border_dir / (border_id + ".png")
+                        created_file = False
+                        try:
+                            db.execute("INSERT INTO borders (id, owner_id, name, width, height, thumbnail) VALUES (?, ?, ?, ?, ?, ?)", (border_id, user_id, name, width, height, thumbnail))
+                            fd = os.open(border_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                            created_file = True
+                            with os.fdopen(fd, "wb") as output:
+                                output.write(png)
+                                output.flush()
+                                os.fsync(output.fileno())
+                            db.commit()
+                        except sqlite3.IntegrityError:
+                            if created_file:
+                                border_path.unlink(missing_ok=True)
+                            raise APIError(409, "A border with this name already exists") from None
+                        except (sqlite3.Error, OSError):
+                            if created_file:
+                                border_path.unlink(missing_ok=True)
+                            raise
+                        self.send_json(201, {"id": border_id, "name": name, "width": width, "height": height, "thumbnail": thumbnail})
+                        return
+                border_match = BORDER_PATH.fullmatch(path)
+                if border_match:
+                    border_id = border_match[1]
+                    if self.command == "GET":
+                        if db.execute("SELECT 1 FROM borders WHERE id = ? AND owner_id = ?", (border_id, user_id)).fetchone() is None:
+                            raise APIError(404, "Border no longer exists")
+                        self.send_border(border_id)
+                        return
+                    if self.command == "DELETE":
+                        if not db.execute("DELETE FROM borders WHERE id = ? AND owner_id = ?", (border_id, user_id)).rowcount:
+                            raise APIError(404, "Border no longer exists")
+                        db.commit()
+                        (self.server.border_dir / (border_id + ".png")).unlink(missing_ok=True)
+                        self.send_json(204)
+                        return
                 if path == "/api/v1/fonts":
                     if self.command == "GET":
                         # Poll metadata only; font bytes are downloaded once per immutable ID.
@@ -374,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
                             self.send_json(204)
                         return
                 raise APIError(404, "Unknown endpoint")
-        except APIError as error:
+        except (APIError, BorderError) as error:
             self.send_json(error.status, {"error": error.message})
         except (sqlite3.Error, OSError, ValueError, RecursionError):
             self.send_json(500, {"error": "Storage request failed"})

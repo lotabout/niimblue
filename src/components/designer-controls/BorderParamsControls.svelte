@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { borderImageHref, prepareBorderImages } from "$/utils/border_images";
   import { Toasts } from "$/utils/toasts";
+  import CustomBorders from "./CustomBorders.svelte";
   import { LabelBorder } from "$/fabric-object/border";
   import {
     BORDER_ANCHORS,
@@ -22,6 +23,7 @@
   }
   let { selectedBorder, editRevision, valueUpdated }: Props = $props();
   const presets = Object.keys(BORDER_PRESETS) as BorderPreset[];
+  let tab = $derived<"builtin" | "custom">(selectedBorder.borderPackage ? "custom" : "builtin");
   let previews = $state<Record<string, string>>({});
   onMount(() => {
     let active = true;
@@ -46,6 +48,8 @@
     void editRevision;
     return {
       preset: selectedBorder.preset,
+      image: !!selectedBorder.borderPackage,
+      imageFit: selectedBorder.imageFit,
       width: Math.round(selectedBorder.width * selectedBorder.scaleX),
       height: Math.round(selectedBorder.height * selectedBorder.scaleY),
       lineWidth: selectedBorder.lineWidth,
@@ -65,7 +69,8 @@
 
   const change = (key: string, value: string | number) => {
     if (typeof value === "number" && !Number.isFinite(value)) return;
-    selectedBorder.set(key, value);
+    if (key === "preset") selectedBorder.usePreset(value as BorderPreset);
+    else selectedBorder.set(key, value);
     valueUpdated();
   };
   const resize = (key: "width" | "height", value: number) => {
@@ -83,20 +88,49 @@
 </script>
 
 <div class="border-controls">
-  <div class="border-presets" aria-label={$tr("params.border.style")}>
-    {#each presets as preset (preset)}
-      <button
-        class="border-preset"
-        class:chosen={values.preset === preset}
-        aria-pressed={values.preset === preset}
-        onclick={() => change("preset", preset)}>
-        {#if previews[preset]}<img src={previews[preset]} alt="" />{:else}<div class="border-preview-placeholder">
-          </div>{/if}
-        <span>{borderPresetName(preset, $locale)}</span>
-      </button>
-    {/each}
+  <div class="border-tabs" role="group" aria-label={$tr("params.border.style")}>
+    <button
+      class="btn btn-sm"
+      class:btn-secondary={tab === "builtin"}
+      aria-pressed={tab === "builtin"}
+      onclick={() => (tab = "builtin")}>{$tr("borders.builtin")}</button>
+    <button
+      class="btn btn-sm"
+      class:btn-secondary={tab === "custom"}
+      aria-pressed={tab === "custom"}
+      onclick={() => (tab = "custom")}>{$tr("borders.mine")}</button>
   </div>
-  <p class="border-hint">{$tr("params.border.hint")}</p>
+  {#if tab === "custom"}
+    <CustomBorders {selectedBorder} {valueUpdated} />
+  {:else}
+    <div class="border-presets" aria-label={$tr("params.border.style")}>
+      {#each presets as preset (preset)}
+        <button
+          class="border-preset"
+          class:chosen={!values.image && values.preset === preset}
+          aria-pressed={!values.image && values.preset === preset}
+          onclick={() => change("preset", preset)}>
+          {#if previews[preset]}<img src={previews[preset]} alt="" />{:else}<div class="border-preview-placeholder">
+            </div>{/if}
+          <span>{borderPresetName(preset, $locale)}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
+  <p class="border-hint">{$tr(values.image ? "borders.image.hint" : "params.border.hint")}</p>
+  {#if values.image}
+    <label class="mb-2"
+      >{$tr("borders.image.fit")}
+      <select
+        class="form-select form-select-sm"
+        aria-label={$tr("borders.image.fit")}
+        value={values.imageFit}
+        onchange={(e) => change("imageFit", e.currentTarget.value)}>
+        <option value="contain">{$tr("borders.image.contain")}</option>
+        <option value="stretch">{$tr("borders.image.stretch")}</option>
+      </select>
+    </label>
+  {/if}
   <div class="border-fields">
     <label
       >{$tr("params.border.width")}<input
@@ -112,23 +146,25 @@
         min={values.minimumHeight}
         value={values.height}
         onchange={(e) => resize("height", e.currentTarget.valueAsNumber)} /></label>
-    <label
-      >{$tr("params.border.line_width")}<input
-        class="form-control form-control-sm"
-        type="number"
-        min="0.5"
-        max="12"
-        step="0.5"
-        value={values.lineWidth}
-        onchange={(e) => change("lineWidth", e.currentTarget.valueAsNumber)} /></label>
-    <label
-      >{$tr("params.border.decoration_size")}<input
-        class="form-control form-control-sm"
-        type="number"
-        min="4"
-        max="80"
-        value={values.decorationSize}
-        onchange={(e) => change("decorationSize", e.currentTarget.valueAsNumber)} /></label>
+    {#if !values.image}
+      <label
+        >{$tr("params.border.line_width")}<input
+          class="form-control form-control-sm"
+          type="number"
+          min="0.5"
+          max="12"
+          step="0.5"
+          value={values.lineWidth}
+          onchange={(e) => change("lineWidth", e.currentTarget.valueAsNumber)} /></label>
+      <label
+        >{$tr("params.border.decoration_size")}<input
+          class="form-control form-control-sm"
+          type="number"
+          min="4"
+          max="80"
+          value={values.decorationSize}
+          onchange={(e) => change("decorationSize", e.currentTarget.valueAsNumber)} /></label>
+    {/if}
     <label
       >{$tr("params.border.inset")}<input
         class="form-control form-control-sm"
@@ -137,13 +173,15 @@
         max="60"
         value={values.inset}
         onchange={(e) => change("inset", e.currentTarget.valueAsNumber)} /></label>
-    <label
-      >{$tr("params.border.color")}<input
-        class="form-control form-control-sm form-control-color"
-        type="color"
-        value={values.borderColor}
-        oninput={(e) => change("borderColor", e.currentTarget.value)} /></label>
-    {#if recipe.repeat}
+    {#if !values.image}
+      <label
+        >{$tr("params.border.color")}<input
+          class="form-control form-control-sm form-control-color"
+          type="color"
+          value={values.borderColor}
+          oninput={(e) => change("borderColor", e.currentTarget.value)} /></label>
+    {/if}
+    {#if !values.image && recipe.repeat}
       <label
         >{$tr("params.border.spacing")}<input
           class="form-control form-control-sm"
@@ -154,7 +192,7 @@
           onchange={(e) => change("patternSpacing", e.currentTarget.valueAsNumber)} /></label>
     {/if}
   </div>
-  {#if recipe.decoration}
+  {#if !values.image && recipe.decoration}
     <label class="border-anchor"
       >{$tr("params.border.anchor")}
       <select
@@ -175,6 +213,15 @@
 </div>
 
 <style>
+  .border-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .border-tabs .btn {
+    color: inherit;
+    flex: 1;
+  }
   .border-controls {
     width: 100%;
     min-width: 0;

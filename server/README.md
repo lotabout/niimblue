@@ -138,12 +138,24 @@ Fonts are stored as binary gzip files at `<database-directory>/fonts/<server-gen
 
 The existing `/data` volume includes the font directory; Compose volume changes are unnecessary. Back up and restore the whole directory with the service stopped. Do not expose `fonts/` as a static web directory. Downloads require a bearer token and a matching owner in SQLite before opening a file. The API accepts only canonical UUID font IDs, never paths or filenames, and refuses symbolic links and non-regular files. CORS alone is not access control.
 
+## Custom image borders
+
+Update the frontend and storage server together (the Python service requires both `storage_server.py` and `border_storage.py`). **Border → My borders** uploads PNG, JPEG or WebP images; the frontend normalizes them to PNG. In local mode the reusable library is in IndexedDB. In remote mode it is scoped to the authenticated user; other devices can refresh the picker to use it. The visible picker also checks metadata every 30 seconds, on returning to the page, and after reconnecting. Names must be unique within each user's library.
+
+Uploads use JSON `{ "name": "Frame", "image": "data:image/png;base64,...", "thumbnail": "data:image/png;base64,..." }`. The original PNG is limited to 10 MiB, 8192 pixels per side and 16 million pixels total; thumbnails are limited to 128 × 64 pixels. The server validates PNG chunks/checksums and bounded pixel decompression. Original images are stored as binary files under `<database-directory>/borders/<server-generated-uuid>.png`; SQLite stores only ownership, name, dimensions and a small thumbnail. Downloads return binary `image/png` after authentication/ownership checks and refuse symlinks/non-regular files. Back up the whole data directory, including `borders/`.
+
+Labels embed a portable copy of every image border they use. Deleting a library entry does not remove it from saved labels, drafts or the current canvas. Remote request failures never save the border to the local library instead.
+
 ## API
 
 All paths start with `/api/v1`; use `Authorization: Bearer <user-token>`. User identity is derived from that token; clients cannot select an owner in request bodies. JSON label request bodies require `Content-Type: application/json`; font uploads use `application/gzip`.
 
 | Method | Path | Body / response |
 | --- | --- | --- |
+| GET | `/borders` | Array of `{ id, name, width, height, thumbnail }` for the current user |
+| POST | `/borders` | JSON upload described above; returns metadata with an immutable generated ID |
+| GET | `/borders/:id` | Binary PNG image |
+| DELETE | `/borders/:id` | Removes library metadata and its image file; no body |
 | GET | `/health` | `{ "apiVersion": 1, "storage": "sqlite", "userId": "<authenticated-user>" }` |
 | GET | `/fonts` | Font metadata: `[{ "id": "<uuid>", "family": "Name", "mimeType": "text/ttf" }]` |
 | POST | `/fonts` | Binary gzip body (`Content-Type: application/gzip`), percent-encoded UTF-8 `X-Font-Family` and `X-Font-Type` (`text/ttf` or `text/woff2`) → new metadata; duplicate family returns 409 |
