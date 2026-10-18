@@ -5,7 +5,8 @@
   import SavedLabelsBrowser from "$/components/designer-controls/SavedLabelsBrowser.svelte";
   import { ExportedLabelTemplateSchema, type ExportedLabelTemplate } from "$/types";
   import { createLabelStorage, storageConfig, StorageError, type StoredLabel } from "$/utils/label_storage";
-  import { LocalStoragePersistence } from "$/utils/persistence";
+  import { LocalDocumentStorage } from "$/utils/local_document_storage";
+  import { databaseUsedSpace } from "$/utils/browser_database";
   import { Toasts } from "$/utils/toasts";
   import { FileUtils } from "$/utils/file_utils";
   import * as fabric from "fabric";
@@ -46,7 +47,8 @@
     try {
       savedLabels = await storage.list();
       selectedIndex = -1;
-      calcUsedSpace();
+      customDefaultTemplate = (await LocalDocumentStorage.loadDefaultTemplate()) !== null;
+      await calcUsedSpace();
     } catch (e) {
       reportError(e);
     } finally {
@@ -54,12 +56,12 @@
     }
   };
   let usedSpace = $state<number>(0);
-  let customDefaultTemplate = $state<boolean>(LocalStoragePersistence.hasCustomDefaultTemplate());
+  let customDefaultTemplate = $state(false);
   let isStandalone = Utils.getAvailableTransports().capacitorBle;
   let modalRef: AppModal;
 
-  const calcUsedSpace = () => {
-    usedSpace = LocalStoragePersistence.usedSpace();
+  const calcUsedSpace = async () => {
+    usedSpace = await databaseUsedSpace();
   };
 
   const onLabelSelected = (index: number) => {
@@ -83,7 +85,7 @@
       savedLabels = savedLabels.filter((_, index) => index !== idx);
       selectedIndex = -1;
       onDelete(id);
-      calcUsedSpace();
+      await calcUsedSpace();
     } catch (e) {
       reportError(e);
     } finally {
@@ -91,25 +93,33 @@
     }
   };
 
-  const onMakeDefaultClicked = () => {
+  const onMakeDefaultClicked = async () => {
+    if (loading) return;
+    loading = true;
     try {
       const label = onRequestLabelTemplate();
       label.thumbnailBase64 = undefined;
-      LocalStoragePersistence.saveDefaultTemplate(label);
+      await LocalDocumentStorage.saveDefaultTemplate(label);
       customDefaultTemplate = true;
-      calcUsedSpace();
+      await calcUsedSpace();
     } catch (e) {
       Toasts.error(e);
+    } finally {
+      loading = false;
     }
   };
 
-  const onRemoveDefaultClicked = () => {
+  const onRemoveDefaultClicked = async () => {
+    if (loading) return;
+    loading = true;
     try {
-      LocalStoragePersistence.saveDefaultTemplate(undefined);
+      await LocalDocumentStorage.saveDefaultTemplate(undefined);
       customDefaultTemplate = false;
-      calcUsedSpace();
+      await calcUsedSpace();
     } catch (e) {
       Toasts.error(e);
+    } finally {
+      loading = false;
     }
   };
 
@@ -148,7 +158,7 @@
       await storage.import(items);
       savedLabels = await storage.list();
       selectedIndex = -1;
-      calcUsedSpace();
+      await calcUsedSpace();
 
       Toasts.message(
         items.length === 1
@@ -307,12 +317,13 @@
 
   {#snippet footer()}
     <div class="btn-group btn-group-sm make-default">
-      <button class="btn default-button" onclick={onMakeDefaultClicked}>
+      <button class="btn default-button" disabled={loading} onclick={onMakeDefaultClicked}>
         {$tr("params.saved_labels.make_default")}
       </button>
       {#if customDefaultTemplate}
         <button
           class="btn default-button"
+          disabled={loading}
           onclick={onRemoveDefaultClicked}
           aria-label={$tr("params.label.delete.cancel")}>
           <MdIcon icon="close" />

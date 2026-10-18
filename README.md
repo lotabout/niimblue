@@ -171,6 +171,8 @@ Skip steps you have done.
 
 ### Optional shared label storage
 
+Browser-local fonts, uploaded SVG icons, saved labels (including embedded images and thumbnails), recovery drafts and the default template are stored in IndexedDB. On startup, existing localStorage data is copied automatically; each old entry is removed only after its database transaction commits. Existing label IDs and the JSON import/export format are preserved. Small preferences and remote connection settings remain in localStorage. Migration errors preserve the original data and are reported in the app; retry after resolving browser storage restrictions. Clearing site data removes both storage types, so export important labels or use remote storage for a separate copy.
+
 Use **Storage settings** in the web app to choose browser storage or a user-configured remote library. The optional [Python + SQLite service](server/README.md) supports sharing saved labels between a phone and computer, with token-based user isolation and revision checks. A [Docker Compose LAN deployment guide (中文)](server/README.zh-CN.md) includes setup and connection steps for both devices.
 
 ### Deployment

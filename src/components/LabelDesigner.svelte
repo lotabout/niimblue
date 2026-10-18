@@ -8,7 +8,8 @@
   import { Barcode } from "$/fabric-object/barcode";
   import { QRCode } from "$/fabric-object/qrcode";
   import { iconCodepoints, type MaterialIcon } from "$/styles/mdi_icons";
-  import { appConfig, automation, connectionState, csvData, loadedFonts, printerMeta } from "$/stores/app";
+  import { appConfig, automation, connectionState, csvData, loadedFonts, printerMeta, userIcons } from "$/stores/app";
+  import { localUserFonts } from "$/stores/fonts";
   import {
     ExportedLabelTemplateSchema,
     type ExportedLabelTemplate,
@@ -21,6 +22,7 @@
   import { tr, type TranslationKey } from "$/utils/i18n";
   import { LabelDesignerObjectHelper } from "$/utils/label_designer_object_helper";
   import { LocalStoragePersistence } from "$/utils/persistence";
+  import { LocalDocumentStorage } from "$/utils/local_document_storage";
   import { Toasts } from "$/utils/toasts";
   import { UndoRedo, type UndoState } from "$/utils/undo_redo";
   import BarcodeParamsPanel from "$/components/designer-controls/BarcodeParamsControls.svelte";
@@ -201,11 +203,11 @@
     undo.push(fabricCanvas!, labelProps, csvEnabled ? $csvData : undefined);
   };
 
-  const flushDraft = () => {
+  const flushDraft = async () => {
     clearTimeout(draftTimer);
     if (!documentReady || loadingDocument) return;
     try {
-      LocalStoragePersistence.saveLabelDraft({
+      await LocalDocumentStorage.saveLabelDraft({
         version: 1,
         label: snapshotCurrentLabel(),
         document: documentState,
@@ -434,7 +436,7 @@
     if (!documentReady || loadingDocument || savingDocument) return;
     if (hasUnsavedChanges && !confirm($tr("workspace.new.confirm"))) return;
     try {
-      const template = LocalStoragePersistence.loadDefaultTemplate();
+      const template = await LocalDocumentStorage.loadDefaultTemplate();
       const label: ExportedLabelTemplate = template
         ? { ...template, id: undefined }
         : { label: DEFAULT_LABEL_PROPS, canvas: { version: fabric.version, objects: [] } };
@@ -589,14 +591,14 @@
     }
 
     try {
-      const draft = LocalStoragePersistence.loadLabelDraft();
+      const draft = await LocalDocumentStorage.loadLabelDraft();
       if (draft) {
         await loadLabelData(draft.label);
         if (draft.csvData) $csvData = draft.csvData;
         let original: ExportedLabelTemplate | null = null;
         try {
           if ($storageConfig.mode === "local" && (draft.document.storageKey ?? "local") === "local") {
-            original = draft.document.id ? LocalStoragePersistence.loadLabel(draft.document.id) : null;
+            original = draft.document.id ? await LocalDocumentStorage.loadLabel(draft.document.id) : null;
           }
         } catch (e) {
           // The working copy is still recoverable even if the original is damaged.
@@ -612,7 +614,7 @@
     }
 
     try {
-      const defaultTemplate = LocalStoragePersistence.loadDefaultTemplate();
+      const defaultTemplate = await LocalDocumentStorage.loadDefaultTemplate();
 
       if (defaultTemplate !== null) {
         if (await onLoadRequested({ ...defaultTemplate, id: undefined })) return;
@@ -656,6 +658,16 @@
     };
     fabricCanvas.setGridEnabled(!!$appConfig.gridEnabled);
 
+    // Migrate all local media on startup, including libraries not opened in this session.
+    const migrations = await Promise.allSettled([
+      localUserFonts.ready(),
+      userIcons.ready(),
+      LocalDocumentStorage.loadLabels(),
+      LocalDocumentStorage.loadDefaultTemplate(),
+    ]);
+    for (const result of migrations) {
+      if (result.status === "rejected") Toasts.error(result.reason);
+    }
     await loadDefaultLabel();
 
     window.addEventListener("hashchange", loadLabelFromUrl);

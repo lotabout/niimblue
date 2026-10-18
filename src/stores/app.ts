@@ -2,9 +2,7 @@ import { get, readable, writable } from "svelte/store";
 import {
   AppConfigSchema,
   CsvParamsSchema,
-  UserIconSchema,
   type CsvParams,
-  type UserIcon,
   type AppConfig,
   type AutomationProps,
   type ConnectionState,
@@ -23,13 +21,13 @@ import {
 } from "@mmote/niimbluelib";
 import { LocalStoragePersistence, writablePersisted } from "$/utils/persistence";
 import { APP_CONFIG_DEFAULTS, CSV_DEFAULT, OBJECT_DEFAULTS_TEXT } from "$/defaults";
-import z from "zod";
+import { createLocalIcons } from "$/utils/local_media";
 import { createPrinterInfo } from "@mmote/niimbluelib/dist/cjs/client/abstract_client";
 import { BluetoothClient } from "$/utils/bluetooth_client";
 
 export const fontCache = writable<string[]>([OBJECT_DEFAULTS_TEXT.fontFamily]);
 export const appConfig = writablePersisted<AppConfig>("config", AppConfigSchema, APP_CONFIG_DEFAULTS);
-export const userIcons = writablePersisted<UserIcon[]>("user_icons", z.array(UserIconSchema), []);
+export const userIcons = createLocalIcons();
 export { userFonts, loadedFonts } from "$/stores/fonts";
 
 export const connectionState = writable<ConnectionState>("disconnected");

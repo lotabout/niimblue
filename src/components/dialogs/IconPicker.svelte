@@ -20,8 +20,13 @@
   let search = $state<string>("");
   let deleteMode = $state<boolean>(false);
   let modalRef: AppModal;
+  let busy = $state(true);
+  let error = $state("");
 
   const addOwn = async () => {
+    if (busy) return;
+    busy = true;
+    error = "";
     try {
       let counter = 0;
       const xmls = await FileUtils.pickAndReadTextFile("svg", true);
@@ -30,15 +35,28 @@
         data: xml,
       }));
 
-      userIcons.update((prev) => [...prev, ...iconsToAdd]);
+      await userIcons.update((prev) => [...prev, ...iconsToAdd]);
     } catch (e) {
+      error = String(e);
       Toasts.error(e);
+    } finally {
+      busy = false;
     }
   };
 
-  const svgClicked = (name: string, data: string) => {
+  const svgClicked = async (name: string, data: string) => {
+    if (busy) return;
     if (deleteMode) {
-      userIcons.update((prev) => prev.filter((e) => e.name !== name));
+      busy = true;
+      error = "";
+      try {
+        await userIcons.update((prev) => prev.filter((e) => e.name !== name));
+      } catch (e) {
+        error = String(e);
+        Toasts.error(e);
+      } finally {
+        busy = false;
+      }
       return;
     }
 
@@ -59,10 +77,20 @@
     if (iconNames.length === 0) {
       iconNames = Object.keys(iconCodepoints) as MaterialIcon[];
     }
+    void userIcons
+      .refresh()
+      .catch((e) => {
+        error = String(e);
+      })
+      .finally(() => {
+        busy = false;
+      });
   });
 </script>
 
 <AppModal title={$tr("editor.iconpicker.title")} {onClose} bind:this={modalRef}>
+  {#if busy}<p role="status">{$tr("storage.loading")}</p>{/if}
+  {#if error}<div class="alert alert-danger" role="alert">{error}</div>{/if}
   <input
     disabled={$appConfig.iconListMode === "user"}
     type="text"
@@ -84,6 +112,7 @@
       {#each $userIcons as { name, data } (name)}
         <button
           class="btn {deleteMode ? 'btn-danger' : 'btn-light'} me-1 mb-1 user-icon"
+          disabled={busy}
           onclick={() => svgClicked(name, data)}>
           <img src="data:image/svg+xml;base64,{FileUtils.base64str(data)}" alt="user-svg" />
         </button>
@@ -102,13 +131,14 @@
   </div>
 
   <div class="input-group input-group-sm mb-1">
-    <button class="btn btn-outline-secondary" onclick={addOwn}>
+    <button class="btn btn-outline-secondary" disabled={busy} onclick={addOwn}>
       <MdIcon icon="add" />
 
       {$tr("editor.iconpicker.add")}
     </button>
     <button
       class="btn {deleteMode ? 'btn-danger' : 'btn-outline-secondary'}"
+      disabled={busy}
       onclick={() => (deleteMode = !deleteMode)}>
       <MdIcon icon="delete" />
       {$tr("editor.iconpicker.delete_mode")}

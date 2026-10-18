@@ -1,4 +1,4 @@
-import { get, writable, type Writable } from "svelte/store";
+import { get, writable, type Readable } from "svelte/store";
 import type { UserFont } from "$/types";
 import { createFontStorage, type FontStorage, type StoredFont } from "$/utils/font_storage";
 import { StorageError, type StorageConfig } from "$/utils/label_storage";
@@ -12,7 +12,10 @@ export interface FontLibraryState {
 // Remote fonts live in memory, avoiding localStorage's small quota for CJK fonts.
 // The original local library is preserved independently for switching and migration.
 export function createFontLibrary(
-  localFonts: Writable<UserFont[]>,
+  localFonts: Readable<UserFont[]> & {
+    ready?: () => Promise<void>;
+    update: (updater: (fonts: UserFont[]) => UserFont[]) => void | Promise<void>;
+  },
   loadFonts: (fonts: UserFont[]) => Promise<void>,
   storageFactory: (config: StorageConfig) => FontStorage = createFontStorage,
 ) {
@@ -32,6 +35,7 @@ export function createFontLibrary(
         let next: StoredFont[] = [];
         let fonts: UserFont[];
         if (currentConfig.mode === "local") {
+          await localFonts.ready?.();
           fonts = get(localFonts);
         } else {
           const storage = storageFactory(currentConfig);
@@ -88,7 +92,7 @@ export function createFontLibrary(
     if (scope !== generation) return;
     if (get(state).fonts.some((f) => f.family === font.family)) throw new StorageError("conflict");
     if (currentConfig.mode === "local") {
-      localFonts.update((fonts) => [...fonts, font]);
+      await localFonts.update((fonts) => [...fonts, font]);
     } else {
       const saved = await storageFactory(currentConfig).add(font);
       await ready();
@@ -105,7 +109,7 @@ export function createFontLibrary(
     await ready();
     if (scope !== generation) return;
     if (currentConfig.mode === "local") {
-      localFonts.update((fonts) => fonts.filter((font) => font.family !== family));
+      await localFonts.update((fonts) => fonts.filter((font) => font.family !== family));
     } else {
       const font = cached.find((font) => font.data.family === family);
       if (!font) throw new StorageError("missing");
@@ -123,6 +127,7 @@ export function createFontLibrary(
     const scope = generation;
     const currentConfig = config;
     if (currentConfig.mode !== "remote") return;
+    await localFonts.ready?.();
     await refresh();
     if (scope !== generation) return;
     if (get(state).error) throw get(state).error;

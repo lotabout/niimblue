@@ -1,7 +1,7 @@
 import { get, writable } from "svelte/store";
 import { z } from "zod";
 import { ExportedLabelTemplateSchema, type ExportedLabelTemplate } from "$/types";
-import { LocalStoragePersistence } from "$/utils/persistence";
+import { LocalDocumentStorage } from "$/utils/local_document_storage";
 
 export const StorageConfigSchema = z.object({
   mode: z.enum(["local", "remote"]),
@@ -148,14 +148,11 @@ export function createRemoteRequest(config: StorageConfig) {
 export function createLabelStorage(config = get(storageConfig)): LabelStorage {
   if (config.mode === "local") {
     return {
-      list: async () => LocalStoragePersistence.loadLabels(),
-      load: async (id) => LocalStoragePersistence.loadLabel(id),
-      save: async (label, id) => LocalStoragePersistence.saveLabel(label, id),
-      delete: async (id) => LocalStoragePersistence.deleteLabel(id),
-      import: async (labels) => {
-        const { zodErrors, otherErrors } = LocalStoragePersistence.appendLabels(labels);
-        if (zodErrors.length || otherErrors.length) throw zodErrors[0] ?? otherErrors[0];
-      },
+      list: async () => LocalDocumentStorage.loadLabels(),
+      load: async (id) => LocalDocumentStorage.loadLabel(id),
+      save: async (label, id) => LocalDocumentStorage.saveLabel(label, id),
+      delete: async (id) => LocalDocumentStorage.deleteLabel(id),
+      import: (labels) => LocalDocumentStorage.importLabels(labels),
       test: async () => undefined,
     };
   }

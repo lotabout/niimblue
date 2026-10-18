@@ -5,7 +5,7 @@
   import { storageConfig, StorageError } from "$/utils/label_storage";
   import { FileUtils } from "$/utils/file_utils";
   import { tr } from "$/utils/i18n";
-  import { LocalStoragePersistence } from "$/utils/persistence";
+  import { databaseUsedSpace } from "$/utils/browser_database";
 
   let show = $state(false);
   let usedSpace = $state(0);
@@ -37,8 +37,12 @@
     } catch (e) {
       error = errorMessage(e);
     } finally {
-      usedSpace = LocalStoragePersistence.usedSpace();
       busy = false;
+      try {
+        usedSpace = await databaseUsedSpace();
+      } catch (e) {
+        error ||= errorMessage(e);
+      }
     }
   };
 
@@ -59,9 +63,16 @@
 
   $effect(() => {
     if (show) {
-      usedSpace = LocalStoragePersistence.usedSpace();
       error = "";
-      void fontLibrary.refresh();
+      void (async () => {
+        try {
+          await localUserFonts.ready();
+          await fontLibrary.refresh();
+          usedSpace = await databaseUsedSpace();
+        } catch (e) {
+          error = errorMessage(e);
+        }
+      })();
     }
   });
 </script>

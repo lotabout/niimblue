@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { buildSync } from "esbuild";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+globalThis.IDBKeyRange = IDBKeyRange;
 
 const bundled = buildSync({
   entryPoints: ["src/utils/label_storage.ts"],
@@ -38,6 +40,7 @@ const label = (title = "Cable") => ({
 });
 const originalFetch = globalThis.fetch;
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
   globalThis.localStorage = freshLocalStorage();
   globalThis.fetch = originalFetch;
   setStorageConfig({ mode: "local", url: "", token: "" });
